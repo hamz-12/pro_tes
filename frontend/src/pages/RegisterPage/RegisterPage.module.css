@@ -1,0 +1,379 @@
+.registerContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #0a0e27;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+}
+
+.backgroundPattern {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.1) 0%, transparent 20%),
+    radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.1) 0%, transparent 20%),
+    radial-gradient(circle at 40% 80%, rgba(6, 182, 212, 0.1) 0%, transparent 20%);
+  z-index: 0;
+}
+
+.registerCard {
+  width: 100%;
+  max-width: 480px;
+  background: rgba(30, 33, 57, 0.7);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1;
+  position: relative;
+}
+
+.registerHeader {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.registerTitle {
+  font-size: 2rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.registerSubtitle {
+  color: #94a3b8;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.progressIndicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.progressStep {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: rgba(51, 65, 85, 0.6);
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.progressStep.active {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+}
+
+.progressLine {
+  width: 3rem;
+  height: 1px;
+  background: rgba(51, 65, 85, 0.6);
+  margin: 0 0.5rem;
+}
+
+.registerForm {
+  display: flex;
+  flex-direction: column;
+}
+
+.formStep {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.inputLabel {
+  color: #f1f5f9;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.inputContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 1rem;
+  color: #64748b;
+  z-index: 1;
+}
+
+.input {
+  width: 100%;
+  padding: 0.875rem 1rem 0.875rem 2.75rem;
+  background: rgba(15, 17, 29, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.inputError {
+  border-color: #ef4444;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.passwordToggle:hover {
+  color: #94a3b8;
+}
+
+.passwordStrength {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.strengthBar {
+  flex: 1;
+  height: 4px;
+  background: rgba(51, 65, 85, 0.6);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.strengthFill {
+  height: 100%;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.strengthText {
+  font-size: 0.75rem;
+  font-weight: 500;
+  min-width: 3rem;
+}
+
+.errorMessage {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ef4444;
+  font-size: 0.875rem;
+}
+
+.errorIcon {
+  font-size: 1rem;
+}
+
+.termsGroup {
+  margin-top: 0.5rem;
+}
+
+.checkboxContainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  cursor: pointer;
+  position: relative;
+  line-height: 1.5;
+}
+
+.checkbox {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  margin-top: 0.125rem;
+}
+
+.checkboxCheckmark {
+  width: 1.25rem;
+  height: 1.25rem;
+  background: rgba(15, 17, 29, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 4px;
+  position: relative;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.checkbox:checked + .checkboxCheckmark {
+  background: #6366f1;
+  border-color: #6366f1;
+}
+
+.checkbox:checked + .checkboxCheckmark:after {
+  content: '';
+  position: absolute;
+  top: 0.25rem;
+  left: 0.4rem;
+  width: 0.3rem;
+  height: 0.6rem;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.termsLink {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.termsLink:hover {
+  color: #8b5cf6;
+}
+
+.stepButtons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.backButton {
+  flex: 1;
+  padding: 0.875rem;
+  background: rgba(15, 17, 29, 0.6);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 8px;
+  color: #f1f5f9;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.backButton:hover {
+  background: rgba(21, 25, 50, 0.8);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.nextButton {
+  flex: 1;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nextButton:hover {
+  background: linear-gradient(135deg, #5a5ce7 0%, #7c4ce8 100%);
+}
+
+.registerButton {
+  flex: 1;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+}
+
+.registerButton:hover {
+  background: linear-gradient(135deg, #5a5ce7 0%, #7c4ce8 100%);
+}
+
+.registerButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.registerFooter {
+  text-align: center;
+  margin-top: 1.5rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.loginLink {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.loginLink:hover {
+  color: #8b5cf6;
+}
+
+@media (max-width: 480px) {
+  .registerCard {
+    max-width: 100%;
+    margin: 1rem;
+    padding: 2rem 1.5rem;
+  }
+  
+  .registerTitle {
+    font-size: 1.75rem;
+  }
+  
+  .stepButtons {
+    flex-direction: column;
+  }
+}

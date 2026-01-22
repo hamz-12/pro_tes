@@ -1,0 +1,237 @@
+.chartContainer {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-6);
+  position: relative;
+  transition: all var(--transition-base);
+}
+
+.chartContainer.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  padding: var(--spacing-8);
+  border-radius: 0;
+  background: var(--color-primary-bg);
+}
+
+.chartContainer:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-6);
+}
+
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.chartTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.selectedPointInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  font-size: 14px;
+}
+
+.pointDate {
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-sm);
+}
+
+.pointValue {
+  color: var(--color-accent-primary);
+  font-weight: 600;
+}
+
+.pointTransactions {
+  color: var(--color-text-tertiary);
+}
+
+.chartControls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+}
+
+.timeRangeSelector {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  background: rgba(255, 255, 255, 0.05);
+  padding: var(--spacing-2);
+  border-radius: var(--radius-md);
+}
+
+.controlIcon {
+  color: var(--color-text-tertiary);
+}
+
+.controlSelect {
+  background: transparent;
+  border: none;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  padding: var(--spacing-1);
+  cursor: pointer;
+}
+
+.controlSelect:focus {
+  outline: none;
+}
+
+.controlSelect option {
+  background: var(--color-card-bg);
+  color: var(--color-text-primary);
+}
+
+.chartTypeSelector {
+  display: flex;
+  gap: var(--spacing-1);
+  background: rgba(255, 255, 255, 0.05);
+  padding: var(--spacing-1);
+  border-radius: var(--radius-md);
+}
+
+.chartTypeButton {
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  padding: var(--spacing-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chartTypeButton:hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.chartTypeButton.active {
+  color: var(--color-accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.controlButton {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  padding: var(--spacing-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controlButton:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-primary);
+  transform: translateY(-1px);
+}
+
+.chartWrapper {
+  width: 100%;
+  position: relative;
+}
+
+.closeFullscreen {
+  position: absolute;
+  top: var(--spacing-6);
+  right: var(--spacing-6);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--transition-fast);
+  z-index: 1001;
+}
+
+.closeFullscreen:hover {
+  background: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+  color: white;
+}
+
+/* Skeleton loading styles */
+.skeletonHeader {
+  height: 24px;
+  width: 200px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-6);
+}
+
+.skeletonChart {
+  height: 300px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-md);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .chartContainer {
+    padding: var(--spacing-4);
+  }
+  
+  .chartHeader {
+    flex-direction: column;
+    gap: var(--spacing-4);
+  }
+  
+  .chartControls {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .selectedPointInfo {
+    flex-wrap: wrap;
+  }
+}

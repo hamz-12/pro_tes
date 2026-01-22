@@ -1,0 +1,56 @@
+.analyticsPage {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95));
+  backdrop-filter: blur(10px);
+}
+
+.errorContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--spacing-8);
+}
+
+.errorContent {
+  text-align: center;
+  max-width: 400px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-xl);
+  padding: var(--spacing-8);
+  backdrop-filter: blur(10px);
+}
+
+.errorContent h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 var(--spacing-4);
+}
+
+.errorContent p {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--spacing-6);
+  line-height: 1.6;
+}
+
+.retryButton {
+  padding: var(--spacing-3) var(--spacing-6);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(59, 130, 246, 0.2));
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--color-accent-primary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.retryButton:hover {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.3), rgba(59, 130, 246, 0.3));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(96, 165, 250, 0.2);
+}

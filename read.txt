@@ -1,0 +1,38 @@
+# Restaurant Sales Analytics Platform
+
+A comprehensive SaaS platform for restaurant owners to analyze their sales data through an intuitive dashboard.
+
+## Features
+
+- User authentication and management
+- CSV data upload with flexible column mapping
+- Real-time analytics dashboard
+- AI-powered anomaly detection and insights
+- Sales trend analysis
+- Multi-restaurant support
+
+## Tech Stack
+
+### Backend
+- FastAPI
+- PostgreSQL
+- SQLAlchemy
+- OpenAI API
+
+### Frontend
+- React
+- Chart.js
+- Material-UI
+
+## Setup Instructions
+
+### Prerequisites
+- Docker and Docker Compose
+- Git
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd restaurant-analytics

@@ -1,0 +1,37 @@
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Float, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from ..core.database import Base
+
+class SalesData(Base):
+    __tablename__ = "sales_data"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(String, index=True)
+    date = Column(DateTime, nullable=False)
+    item_name = Column(String, nullable=False)
+    category = Column(String)
+    quantity = Column(Integer, default=1)
+    price = Column(Float, nullable=False)
+    total_amount = Column(Float, nullable=False)
+    payment_method = Column(String)
+    customer_id = Column(String)
+    staff_id = Column(String)
+    notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    restaurant_id = Column(Integer, ForeignKey("restaurants.id"))
+    restaurant = relationship("Restaurant", back_populates="sales_data")
+
+class CSVUpload(Base):
+    __tablename__ = "csv_uploads"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    upload_date = Column(DateTime(timezone=True), server_default=func.now())
+    processed = Column(Boolean, default=False)
+    columns_mapping = Column(Text)  # JSON string of column mappings
+    
+    restaurant_id = Column(Integer, ForeignKey("restaurants.id"))
+    restaurant = relationship("Restaurant")

@@ -1,0 +1,422 @@
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+  transition: all var(--transition-base);
+}
+
+.header.scrolled {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background: rgba(10, 14, 39, 0.95);
+}
+
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 var(--spacing-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 70px;
+}
+
+.logoSection {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+}
+
+.menuButton {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  padding: var(--spacing-2);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.menuButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+
+.logo:hover {
+  opacity: 0.9;
+}
+
+.logoIcon {
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.logoText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+
+.logoPrimary {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.5px;
+}
+
+.logoSecondary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-accent-primary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+}
+
+.navItems {
+  display: flex;
+  gap: var(--spacing-1);
+  background: rgba(255, 255, 255, 0.05);
+  padding: var(--spacing-1);
+  border-radius: var(--radius-lg);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-4);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  position: relative;
+  transition: all var(--transition-fast);
+}
+
+.navItem:hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.navItem.active {
+  color: var(--color-text-primary);
+}
+
+.navIcon {
+  font-size: 16px;
+}
+
+.navLabel {
+  display: block;
+}
+
+.navIndicator {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  background: var(--color-accent-primary);
+  border-radius: 50%;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.searchButton,
+.themeToggle,
+.notificationButton {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: var(--spacing-2);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.searchButton:hover,
+.themeToggle:hover,
+.notificationButton:hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.notificationBadge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: var(--color-error);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(25%, -25%);
+}
+
+.userMenuContainer {
+  position: relative;
+}
+
+.userButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  background: none;
+  border: none;
+  padding: var(--spacing-1) var(--spacing-2);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.userButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.userAvatar {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.userInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.userName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.userEmail {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.userDropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  z-index: 101;
+}
+
+.dropdownItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dropdownItem:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-primary);
+}
+
+.dropdownIcon {
+  color: var(--color-text-tertiary);
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.searchOverlay {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-card-bg);
+  border-top: 1px solid var(--color-border);
+  padding: var(--spacing-4) var(--spacing-6);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.searchInputWrapper {
+  position: relative;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--spacing-4);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-tertiary);
+}
+
+.searchInput {
+  width: 100%;
+  padding: var(--spacing-4) var(--spacing-4) var(--spacing-4) calc(var(--spacing-4) * 3);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-primary);
+  font-size: 16px;
+  transition: all var(--transition-fast);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.searchClose {
+  position: absolute;
+  right: var(--spacing-4);
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: var(--spacing-1);
+  transition: color var(--transition-fast);
+}
+
+.searchClose:hover {
+  color: var(--color-text-primary);
+}
+
+.mobileMenu {
+  display: none;
+  background: var(--color-card-bg);
+  border-top: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.mobileNavItems {
+  padding: var(--spacing-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.mobileNavItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.mobileNavItem:hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mobileNavItem.mobileActive {
+  color: var(--color-accent-primary);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.mobileNavIcon {
+  font-size: 20px;
+}
+
+@media (max-width: 1024px) {
+  .nav {
+    display: none;
+  }
+  
+  .menuButton {
+    display: block;
+  }
+  
+  .mobileMenu {
+    display: block;
+  }
+  
+  .userInfo {
+    display: none;
+  }
+  
+  .container {
+    padding: 0 var(--spacing-4);
+  }
+}
+
+@media (max-width: 768px) {
+  .actions {
+    gap: var(--spacing-1);
+  }
+  
+  .searchButton,
+  .themeToggle,
+  .notificationButton {
+    padding: var(--spacing-1);
+  }
+  
+  .logoSecondary {
+    display: none;
+  }
+}
