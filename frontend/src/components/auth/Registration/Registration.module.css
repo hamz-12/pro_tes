@@ -1,4 +1,5 @@
-.registerContainer {
+/* frontend/src/components/auth/Registration/Registration.module.css */
+.registrationContainer {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -7,6 +8,12 @@
   background: linear-gradient(135deg, #0a0e27 0%, #151932 100%);
   position: relative;
   overflow: hidden;
+}
+
+.registrationContainer.modal {
+  min-height: auto;
+  padding: 0;
+  background: transparent;
 }
 
 .glassCard {
@@ -20,6 +27,12 @@
   position: relative;
   z-index: 1;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.registrationContainer.modal .glassCard {
+  max-width: 100%;
+  border-radius: var(--radius-xl);
+  margin: 0;
 }
 
 .header {
@@ -148,9 +161,14 @@
 }
 
 .formStep {
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: var(--spacing-4);
+  min-height: 350px;
+}
+
+.formStep.active {
+  display: flex;
 }
 
 .inputGroup {
@@ -404,6 +422,9 @@
 }
 
 .serverError {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
   padding: var(--spacing-3) var(--spacing-4);
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);

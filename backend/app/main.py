@@ -6,14 +6,12 @@ from .core.config import settings
 from .models import user, restaurant, sales
 from .api.v1 import auth, restaurants, upload, analytics
 
-# Create database tables
 user.Base.metadata.create_all(bind=engine)
 restaurant.Base.metadata.create_all(bind=engine)
 sales.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Restaurant Analytics API", version="1.0.0")
 
-# Set up CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,

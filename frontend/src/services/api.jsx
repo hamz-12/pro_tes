@@ -1,35 +1,31 @@
 import axios from 'axios';
+import { STORAGE_KEYS } from '../utils/constants';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
+
 const api = axios.create({
   baseURL: API_BASE_URL,
-  // headers: {
-  //   'Content-Type': 'application/json',
-  // },
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-api.defaults.headers.common['Accept'] = 'application/json';
-
-// Request interceptor for adding auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor for handling errors
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('auth_token');
+      localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
       window.location.href = '/login';
     }
     return Promise.reject(error);

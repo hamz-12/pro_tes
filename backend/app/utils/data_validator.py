@@ -2,9 +2,6 @@ from typing import List, Dict, Any
 from ..schemas.sales import SalesDataCreate
 
 def validate_sales_data(sales_data_list: List[SalesDataCreate]) -> List[SalesDataCreate]:
-    """
-    Validate sales data and filter out invalid records
-    """
     validated_data = []
     
     for sales_data in sales_data_list:

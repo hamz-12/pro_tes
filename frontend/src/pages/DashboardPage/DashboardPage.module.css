@@ -225,3 +225,345 @@
     align-items: stretch;
   }
 }
+
+/* Add these styles to your existing DashboardPage.module.css */
+
+.restaurantSelector {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-3);
+}
+
+.selectorLabel {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.restaurantSelect {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 200px;
+}
+
+.restaurantSelect:focus {
+  outline: none;
+  border-color: var(--color-accent-primary);
+}
+
+.headerActions {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.uploadButton,
+.refreshButton,
+.exportButton,
+.addRestaurantButton {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.uploadButton {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--color-success);
+}
+
+.uploadButton:hover {
+  background: rgba(16, 185, 129, 0.2);
+}
+
+.refreshButton {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.refreshButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+}
+
+.refreshButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.exportButton {
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--color-accent-primary);
+}
+
+.exportButton:hover {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+.addRestaurantButton {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  color: white;
+}
+
+.addRestaurantButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--spacing-6);
+  margin-bottom: var(--spacing-8);
+}
+
+.chartsGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--spacing-6);
+  margin-bottom: var(--spacing-6);
+}
+
+.bottomCharts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-6);
+  margin-bottom: var(--spacing-8);
+}
+
+.mainChart,
+.sideChart,
+.bottomChart {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: all var(--transition-base);
+}
+
+.mainChart:hover,
+.sideChart:hover,
+.bottomChart:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* Modal Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modalHeader h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: var(--spacing-1);
+  line-height: 1;
+}
+
+.closeButton:hover {
+  color: var(--color-text-primary);
+}
+
+.modalBody {
+  padding: var(--spacing-6);
+}
+
+.modalBody h3 {
+  margin: 0 0 var(--spacing-3);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.modalBody p {
+  margin: 0 0 var(--spacing-4);
+  color: var(--color-text-secondary);
+}
+
+.fileDropArea {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-8);
+  text-align: center;
+  transition: all var(--transition-fast);
+}
+
+.fileDropArea:hover {
+  border-color: var(--color-accent-primary);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.fileDropArea svg {
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--spacing-4);
+}
+
+.fileInput {
+  display: none;
+}
+
+.columnMapping {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-6);
+}
+
+.mappingRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.columnName {
+  flex: 1;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.fieldSelect {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-3);
+}
+
+.cancelButton,
+.uploadButton {
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.cancelButton {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.cancelButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+}
+
+.uploadButton {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  color: white;
+}
+
+.uploadButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.uploadButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .chartsGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .bottomCharts {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    gap: var(--spacing-4);
+    align-items: flex-start;
+  }
+  
+  .headerRight {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+  }
+  
+  .headerActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .metricsGrid {
+    grid-template-columns: 1fr;
+  }
+}
