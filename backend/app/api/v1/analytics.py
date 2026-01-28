@@ -17,7 +17,6 @@ def get_analytics(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    # Check if restaurant belongs to current user
     restaurant = db.query(Restaurant).filter(
         Restaurant.id == request.restaurant_id,
         Restaurant.owner_id == current_user.id
@@ -26,7 +25,6 @@ def get_analytics(
     if not restaurant:
         raise HTTPException(status_code=404, detail="Restaurant not found")
     
-    # Get sales analytics
     analytics_data = get_sales_analytics(
         db=db,
         restaurant_id=request.restaurant_id,

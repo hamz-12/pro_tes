@@ -13,7 +13,6 @@ router = APIRouter()
 
 @router.post("/register", response_model=UserSchema)
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    # Check if user already exists
     db_user = get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(
@@ -28,7 +27,6 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
             detail="Username already taken"
         )
     
-    # Create new user
     return create_user(db=db, user=user)
 
 @router.post("/login", response_model=Token)
@@ -47,7 +45,6 @@ def login(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    print('user: ', user)
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=UserSchema)

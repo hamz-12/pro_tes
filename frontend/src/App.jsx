@@ -6,8 +6,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { NotificationProvider } from './context/NotificationContext';
 import Loading from './components/common/Loading/Loading';
-// import ProtectedRoute from './components/auth/ProtectedRoute/ProtectedRoute';
-import { ProtectedRoute } from "./context/AuthContext";
+import ProtectedRoute from './components/auth/ProtectedRoute/ProtectedRoute';
+// import { ProtectedRoute } from "./context/AuthContext";
 
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('./pages/HomePage/HomePage'));
@@ -45,9 +45,9 @@ const AppRoutes = () => {
         !isAuthenticated ? <RegisterPage /> : <Navigate to="/dashboard" />
       } />
       <Route path="/dashboard" element={
-        // <ProtectedRoute>
+        <ProtectedRoute>
           <DashboardPage />
-        // </ProtectedRoute>
+        </ProtectedRoute>
       } />
       <Route path="/analytics" element={
         <ProtectedRoute>

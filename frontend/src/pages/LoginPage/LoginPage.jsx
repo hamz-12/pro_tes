@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-hot-toast';
-// Updated Import
+import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
 import { FiEye, FiEyeOff, FiMail, FiLock, FiAlertCircle, FiCheckCircle } from "react-icons/fi";
 import styles from './LoginPage.module.css';
 
@@ -12,25 +13,35 @@ const LoginPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth();
   
   const { register, handleSubmit, formState: { errors } } = useForm();
   
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('auth_token');
     if (token) {
       navigate('/dashboard');
     }
-  }, [navigate]);
+
+    if (location.state?.message) {
+      toast.success(location.state.message);
+      window.history.replaceState({}, document.title);
+    }
+  }, [navigate, location.state]);
   
   const onSubmit = async (data) => {
     setIsLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      localStorage.setItem('token', 'mock-token');
-      toast.success('Login successful!');
-      navigate('/dashboard');
+      const result = await login(data.email, data.password);
+      if (result.success) {
+        toast.success('Login successful!');
+        navigate('/dashboard');
+      } else {
+        toast.error(result.message || 'Invalid credentials');
+      }
     } catch (error) {
-      toast.error('Invalid email or password');
+      console.error("Login Error:", error);
+      toast.error(error.response?.data?.detail || 'Invalid credentials');
     } finally {
       setIsLoading(false);
     }

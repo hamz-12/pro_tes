@@ -10,7 +10,7 @@ import {
   FiCheck,
 } from 'react-icons/fi';
 import LoginForm from '../../components/auth/LoginForm/LoginForm';
-import RegisterForm from '../../components/auth/RegisterForm/RegisterForm';
+import RegistrationModal from '../../components/auth/RegistrationModal/RegistrationModal';
 import styles from './HomePage.module.css';
 
 const HomePage = () => {
@@ -93,9 +93,7 @@ const HomePage = () => {
   };
 
   const handleRegisterSuccess = () => {
-    setActiveForm('login');
     setShowRegister(false);
-    setShowLogin(true);
   };
 
   return (
@@ -407,15 +405,14 @@ const HomePage = () => {
         />
       </AnimatedModal>
 
-      <AnimatedModal show={showRegister} onClose={() => setShowRegister(false)}>
-        <RegisterForm
-          onSuccess={handleRegisterSuccess}
-          onLoginClick={() => {
-            setShowRegister(false);
-            setShowLogin(true);
-          }}
-        />
-      </AnimatedModal>
+      <RegistrationModal
+        isOpen={showRegister}
+        onClose={() => setShowRegister(false)}
+        onLoginClick={() => {
+          setShowRegister(false);
+          setShowLogin(true);
+        }}
+      />
     </div>
   );
 };
