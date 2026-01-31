@@ -1,4 +1,4 @@
-/* frontend/src/components/auth/Registration/Registration.module.css */
+/* frontend/src/components/Registration/Registration.module.css */
 .registrationContainer {
   min-height: 100vh;
   display: flex;
@@ -207,21 +207,27 @@
   transition: all var(--transition-fast);
 }
 
-.input:focus {
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.input:focus, .textarea:focus {
   outline: none;
   border-color: var(--color-accent-primary);
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-.input::placeholder {
+.input::placeholder, .textarea::placeholder {
   color: var(--color-text-tertiary);
 }
 
-.input.error {
+.input.error, .textarea.error {
   border-color: var(--color-error);
 }
 
-.input.error:focus {
+.input.error:focus, .textarea.error:focus {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
 }
 
@@ -236,7 +242,7 @@
   transition: opacity var(--transition-fast);
 }
 
-.input:focus ~ .inputDecoration {
+.input:focus ~ .inputDecoration, .textarea:focus ~ .inputDecoration {
   opacity: 1;
 }
 
@@ -396,6 +402,24 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   padding: var(--spacing-4);
+  text-align: left;
+}
+
+.detailSection {
+  margin-bottom: var(--spacing-4);
+}
+
+.detailSection:last-child {
+  margin-bottom: 0;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-3);
+  padding-bottom: var(--spacing-2);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .detailItem {
@@ -419,6 +443,9 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
+  text-align: right;
+  max-width: 60%;
+  word-break: break-word;
 }
 
 .serverError {

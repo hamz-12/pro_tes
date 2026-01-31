@@ -1,3 +1,4 @@
+// frontend/src/components/dashboard/AnomalyAlert/AnomalyAlert.jsx
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,11 +21,17 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
   const [dismissed, setDismissed] = useState([]);
   const [selectedAnomaly, setSelectedAnomaly] = useState(null);
 
-  const visibleAnomalies = anomalies
+  // Ensure anomalies is an array even if undefined or null is passed
+  const safeAnomalies = Array.isArray(anomalies) ? anomalies : [];
+  
+  const visibleAnomalies = safeAnomalies
+    .filter(anomaly => anomaly && (anomaly.id || anomaly.date)) // Filter out null/undefined anomalies
     .filter(anomaly => !dismissed.includes(anomaly.id || anomaly.date))
     .slice(0, maxVisible);
 
   const getSeverityIcon = (severity) => {
+    if (!severity) return <FiAlertCircle className={styles.iconMedium} />;
+    
     switch (severity.toLowerCase()) {
       case 'high':
         return <FiAlertOctagon className={styles.iconHigh} />;
@@ -38,6 +45,8 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
   };
 
   const getSeverityColor = (severity) => {
+    if (!severity) return '#f59e0b';
+    
     switch (severity.toLowerCase()) {
       case 'high':
         return '#ef4444';
@@ -51,6 +60,8 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
   };
 
   const getTrendIcon = (type) => {
+    if (!type) return null;
+    
     switch (type) {
       case 'spike':
         return <FiTrendingUp className={styles.trendUp} />;
@@ -67,7 +78,7 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
   };
 
   const handleDismissAll = () => {
-    const allIds = visibleAnomalies.map(a => a.id || a.date);
+    const allIds = visibleAnomalies.map(a => a.id || a.date).filter(Boolean);
     setDismissed([...dismissed, ...allIds]);
   };
 
@@ -77,6 +88,7 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
     setDismissed([...dismissed, anomalyId]);
   };
 
+  // If there are no visible anomalies, don't render anything
   if (visibleAnomalies.length === 0) {
     return null;
   }
@@ -127,7 +139,7 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
           >
             {visibleAnomalies.map((anomaly, index) => (
               <motion.div
-                key={anomaly.id || anomaly.date}
+                key={anomaly.id || anomaly.date || index}
                 className={`${styles.anomalyCard} ${
                   selectedAnomaly === (anomaly.id || anomaly.date) ? styles.selected : ''
                 }`}
@@ -164,7 +176,7 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
                         backgroundColor: getSeverityColor(anomaly.severity) + '20',
                         color: getSeverityColor(anomaly.severity)
                       }}>
-                        {anomaly.severity} severity
+                        {anomaly.severity || 'medium'} severity
                       </span>
                     </div>
                   </div>
@@ -189,7 +201,7 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
 
                 <div className={styles.anomalyContent}>
                   <p className={styles.anomalyDescription}>
-                    {anomaly.description}
+                    {anomaly.description || 'Unusual pattern detected in sales data.'}
                   </p>
                   
                   {anomaly.impact && (
@@ -273,7 +285,7 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
         <div className={styles.summary}>
           <div className={styles.summaryList}>
             {visibleAnomalies.slice(0, 2).map((anomaly) => (
-              <div key={anomaly.id || anomaly.date} className={styles.summaryItem}>
+              <div key={anomaly.id || anomaly.date || Math.random()} className={styles.summaryItem}>
                 <div
                   className={styles.summarySeverity}
                   style={{ backgroundColor: getSeverityColor(anomaly.severity) }}
@@ -296,12 +308,12 @@ const AnomalyAlert = ({ anomalies = [], maxVisible = 2, autoExpand = false }) =>
         <div className={styles.stats}>
           <div className={styles.stat}>
             <span className={styles.statLabel}>Total Detected:</span>
-            <span className={styles.statValue}>{anomalies.length}</span>
+            <span className={styles.statValue}>{safeAnomalies.length}</span>
           </div>
           <div className={styles.stat}>
             <span className={styles.statLabel}>High Severity:</span>
             <span className={styles.statValue}>
-              {anomalies.filter(a => a.severity.toLowerCase() === 'high').length}
+              {safeAnomalies.filter(a => a.severity && a.severity.toLowerCase() === 'high').length}
             </span>
           </div>
           <div className={styles.stat}>

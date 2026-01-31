@@ -1,4 +1,4 @@
-from pydantic import BaseSettings
+from pydantic.v1 import BaseSettings
 from typing import List, Optional
 
 class Settings(BaseSettings):
@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    OPENAI_API_KEY: str
+    HUGGINGFACE_API_TOKEN: str
     
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
     

@@ -7,7 +7,11 @@ const RegisterPage = () => {
   const navigate = useNavigate();
   
   const handleSuccess = () => {
-    navigate('/dashboard');
+    navigate('/login', { 
+      state: { 
+        message: 'Registration successful! Please log in with your credentials.' 
+      } 
+    });
   };
   
   const handleLoginClick = () => {

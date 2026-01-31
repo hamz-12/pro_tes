@@ -2,6 +2,7 @@ from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, F
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..core.database import Base
+from datetime import datetime
 
 class SalesData(Base):
     __tablename__ = "sales_data"
@@ -27,11 +28,13 @@ class CSVUpload(Base):
     __tablename__ = "csv_uploads"
     
     id = Column(Integer, primary_key=True, index=True)
+    restaurant_id = Column(Integer, ForeignKey("restaurants.id"), nullable=False)
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
-    upload_date = Column(DateTime(timezone=True), server_default=func.now())
+    upload_date = Column(DateTime, default=datetime.utcnow)
     processed = Column(Boolean, default=False)
-    columns_mapping = Column(Text)  # JSON string of column mappings
+    records_processed = Column(Integer, default=0)
+    file_size = Column(Integer, default=0)
+    error_message = Column(String, nullable=True)
     
-    restaurant_id = Column(Integer, ForeignKey("restaurants.id"))
-    restaurant = relationship("Restaurant")
+    restaurant = relationship("Restaurant", back_populates="csv_uploads")

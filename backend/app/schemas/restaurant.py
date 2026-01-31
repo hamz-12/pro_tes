@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from datetime import datetime
 
@@ -6,6 +6,7 @@ class RestaurantBase(BaseModel):
     name: str
     address: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     description: Optional[str] = None
 
 class RestaurantCreate(RestaurantBase):
@@ -15,14 +16,15 @@ class RestaurantUpdate(BaseModel):
     name: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
 
 class Restaurant(RestaurantBase):
     id: int
     is_active: bool
+    owner_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)

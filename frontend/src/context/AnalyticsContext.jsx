@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useCallback, useEffect } from 'react';
 import analyticsService from '../services/analyticsService';
+import dashboardService from '../services/dashboardService';
 import { ANALYTICS, STORAGE_KEYS } from '../utils/constants';
 import { formatDate } from '../utils/formatters';
 
@@ -25,6 +26,8 @@ export const AnalyticsProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const [preferences, setPreferences] = useState(null);
   const [dateRange, setDateRange] = useState(ANALYTICS.DATE_RANGES.LAST_30_DAYS);
+  const [selectedRestaurant, setSelectedRestaurant] = useState(null);
+  const [restaurants, setRestaurants] = useState([]);
 
   // Load analytics preferences
   useEffect(() => {
@@ -62,21 +65,55 @@ export const AnalyticsProvider = ({ children }) => {
     loadPreferences();
   }, []);
 
-  // Load dashboard data
-  const loadDashboardData = useCallback(async (range = null, forceRefresh = false) => {
+  // Load restaurants
+  const loadRestaurants = useCallback(async () => {
+    try {
+      const restaurantsData = await dashboardService.getRestaurants();
+      setRestaurants(restaurantsData);
+      
+      // Select first restaurant by default if none is selected
+      if (restaurantsData.length > 0 && !selectedRestaurant) {
+        setSelectedRestaurant(restaurantsData[0].id);
+      }
+      
+      return { success: true, data: restaurantsData };
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || 'Failed to load restaurants';
+      setError(message);
+      return { success: false, message };
+    }
+  }, [selectedRestaurant]);
+
+  // Load dashboard data - updated to use the correct API
+  const loadDashboardData = useCallback(async (restaurantId = null, range = null, forceRefresh = false) => {
     try {
       setLoading(true);
       setError(null);
       
+      const restaurantToUse = restaurantId || selectedRestaurant;
       const dateRangeToUse = range || dateRange;
-      const response = await analyticsService.getDashboardData(dateRangeToUse, forceRefresh);
       
-      if (response.success && response.data) {
-        setDashboardData(response.data);
-        return { success: true, data: response.data };
+      if (!restaurantToUse) {
+        setError('No restaurant selected');
+        return { success: false, message: 'No restaurant selected' };
+      }
+      
+      // Get date range in the format expected by the API
+      const { startDate, endDate } = getDateRangeFromValue(dateRangeToUse);
+      
+      // Use the dashboardService to get analytics data
+      const response = await dashboardService.getAnalytics(restaurantToUse, startDate, endDate);
+      
+      if (response) {
+        setDashboardData(response);
+        setAnalyticsData(response);
+        setAnomalies(response.anomalies || []);
+        setTrends(response.daily_sales || []);
+        
+        return { success: true, data: response };
       } else {
-        setError(response.message || 'Failed to load dashboard data');
-        return { success: false, message: response.message };
+        setError('Failed to load dashboard data');
+        return { success: false, message: 'Failed to load dashboard data' };
       }
     } catch (err) {
       const message = err.response?.data?.message || err.message || 'Failed to load dashboard data';
@@ -85,7 +122,74 @@ export const AnalyticsProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [dateRange]);
+  }, [selectedRestaurant, dateRange]);
+
+  // Helper function to convert date range value to start and end dates
+  const getDateRangeFromValue = (rangeValue) => {
+    const now = new Date();
+    let startDate, endDate = now;
+    
+    switch (rangeValue) {
+      case '7d':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case '30d':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case '90d':
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 90);
+        break;
+      case '1y':
+        startDate = new Date(now);
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 30);
+    }
+    
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0]
+    };
+  };
+
+  // Upload CSV and refresh data
+  const uploadCSVAndRefresh = useCallback(async (file, restaurantId, columnMapping) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Upload the CSV file
+      const uploadResponse = await dashboardService.uploadCSV(file, restaurantId, columnMapping);
+      
+      if (uploadResponse) {
+        // Wait a moment for the backend to process the data
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Refresh the dashboard data
+        const refreshResponse = await loadDashboardData(restaurantId);
+        
+        return { 
+          success: true, 
+          uploadData: uploadResponse,
+          refreshData: refreshResponse.data
+        };
+      } else {
+        setError('Failed to upload CSV');
+        return { success: false, message: 'Failed to upload CSV' };
+      }
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || 'Failed to upload CSV';
+      setError(message);
+      return { success: false, message };
+    } finally {
+      setLoading(false);
+    }
+  }, [loadDashboardData]);
 
   // Load trends data
   const loadTrends = useCallback(async (metric = null, range = null) => {
@@ -168,37 +272,27 @@ export const AnalyticsProvider = ({ children }) => {
   }, [dateRange]);
 
   // Load all analytics data
-  const loadAllData = useCallback(async (range = null) => {
+  const loadAllData = useCallback(async (restaurantId = null, range = null) => {
     try {
       setLoading(true);
       setError(null);
       
+      const restaurantToUse = restaurantId || selectedRestaurant;
       const dateRangeToUse = range || dateRange;
-      setDateRange(dateRangeToUse);
       
-      const [dashboardResponse, trendsResponse, anomaliesResponse] = await Promise.all([
-        loadDashboardData(dateRangeToUse),
-        loadTrends(null, dateRangeToUse),
-        loadAnomalies(null, dateRangeToUse),
-      ]);
+      if (!restaurantToUse) {
+        setError('No restaurant selected');
+        return { success: false, message: 'No restaurant selected' };
+      }
       
-      if (dashboardResponse.success && trendsResponse.success && anomaliesResponse.success) {
-        setAnalyticsData({
-          dashboard: dashboardResponse.data,
-          trends: trendsResponse.data?.trends,
-          anomalies: anomaliesResponse.data?.anomalies,
-          summary: trendsResponse.data?.summary,
-        });
-        return { success: true };
+      // Load dashboard data which includes all the necessary information
+      const dashboardResponse = await loadDashboardData(restaurantToUse, dateRangeToUse);
+      
+      if (dashboardResponse.success) {
+        return { success: true, data: dashboardResponse.data };
       } else {
-        const errors = [
-          dashboardResponse.message,
-          trendsResponse.message,
-          anomaliesResponse.message,
-        ].filter(Boolean);
-        
-        setError(errors.join(', ') || 'Failed to load analytics data');
-        return { success: false, message: errors.join(', ') };
+        setError(dashboardResponse.message || 'Failed to load analytics data');
+        return { success: false, message: dashboardResponse.message };
       }
     } catch (err) {
       const message = err.message || 'Failed to load analytics data';
@@ -207,7 +301,7 @@ export const AnalyticsProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [dateRange, loadDashboardData, loadTrends, loadAnomalies]);
+  }, [selectedRestaurant, dateRange, loadDashboardData]);
 
   // Track event
   const trackEvent = useCallback(async (eventType, eventData = {}) => {
@@ -314,11 +408,17 @@ export const AnalyticsProvider = ({ children }) => {
     }
   }, [dateRange]);
 
-  // Set date range
+  // Set restaurant and reload data
+  const setRestaurantAndReload = useCallback(async (restaurantId) => {
+    setSelectedRestaurant(restaurantId);
+    return await loadDashboardData(restaurantId);
+  }, [loadDashboardData]);
+
+  // Set date range and reload data
   const setDateRangeAndReload = useCallback(async (newDateRange) => {
     setDateRange(newDateRange);
-    return await loadAllData(newDateRange);
-  }, [loadAllData]);
+    return await loadDashboardData(selectedRestaurant, newDateRange);
+  }, [selectedRestaurant, loadDashboardData]);
 
   // Clear error
   const clearError = useCallback(() => {
@@ -327,11 +427,11 @@ export const AnalyticsProvider = ({ children }) => {
 
   // Get statistics
   const getStatistics = useCallback(() => {
-    if (!analyticsData) return null;
+    if (!dashboardData) return null;
     
-    const totalRevenue = analyticsData.summary?.total_revenue || 0;
-    const totalTransactions = analyticsData.summary?.total_transactions || 0;
-    const avgOrderValue = analyticsData.summary?.avg_transaction_value || 0;
+    const totalRevenue = dashboardData.summary?.total_revenue || 0;
+    const totalTransactions = dashboardData.summary?.total_transactions || 0;
+    const avgOrderValue = dashboardData.summary?.avg_transaction_value || 0;
     const anomalyCount = anomalies.length;
     const trendCount = trends.length;
     
@@ -342,17 +442,17 @@ export const AnalyticsProvider = ({ children }) => {
       anomalyCount,
       trendCount,
       dateRange,
+      restaurantId: selectedRestaurant,
     };
-  }, [analyticsData, anomalies.length, trends.length, dateRange]);
+  }, [dashboardData, anomalies.length, trends.length, dateRange, selectedRestaurant]);
 
   // Get chart data for metric
   const getChartData = useCallback((metric, chartType = 'line') => {
-    if (!analyticsData || !analyticsData.trends) return null;
+    if (!dashboardData || !dashboardData.daily_sales) return null;
     
-    const metricData = analyticsData.trends.map(trend => ({
-      date: formatDate(trend.date, 'short'),
-      value: trend[metric] || 0,
-      previous: trend[`previous_${metric}`] || 0,
+    const metricData = dashboardData.daily_sales.map(sale => ({
+      date: formatDate(sale.date, 'short'),
+      value: sale[metric] || 0,
     }));
     
     return {
@@ -361,17 +461,17 @@ export const AnalyticsProvider = ({ children }) => {
       metric,
       dateRange,
     };
-  }, [analyticsData, dateRange]);
+  }, [dashboardData, dateRange]);
 
   // Check for alerts
   const checkAlerts = useCallback(() => {
-    if (!analyticsData || !preferences?.alertThresholds) return [];
+    if (!dashboardData || !preferences?.alertThresholds) return [];
     
     const alerts = [];
     const thresholds = preferences.alertThresholds;
     
     // Check revenue alert
-    const revenueChange = analyticsData.summary?.revenue_change || 0;
+    const revenueChange = dashboardData.summary?.revenue_change || 0;
     if (revenueChange <= thresholds.revenue.critical) {
       alerts.push({
         type: 'critical',
@@ -391,7 +491,7 @@ export const AnalyticsProvider = ({ children }) => {
     }
     
     // Check transactions alert
-    const transactionsChange = analyticsData.summary?.transactions_change || 0;
+    const transactionsChange = dashboardData.summary?.transactions_change || 0;
     if (transactionsChange <= thresholds.transactions.critical) {
       alerts.push({
         type: 'critical',
@@ -411,7 +511,19 @@ export const AnalyticsProvider = ({ children }) => {
     }
     
     return alerts;
-  }, [analyticsData, preferences]);
+  }, [dashboardData, preferences]);
+
+  // Initialize restaurants on component mount
+  useEffect(() => {
+    loadRestaurants();
+  }, [loadRestaurants]);
+
+  // Load dashboard data when restaurant or date range changes
+  useEffect(() => {
+    if (selectedRestaurant) {
+      loadDashboardData(selectedRestaurant, dateRange);
+    }
+  }, [selectedRestaurant, dateRange, loadDashboardData]);
 
   // Context value
   const value = {
@@ -425,6 +537,8 @@ export const AnalyticsProvider = ({ children }) => {
     error,
     preferences,
     dateRange,
+    selectedRestaurant,
+    restaurants,
     
     // Actions
     loadDashboardData,
@@ -432,11 +546,13 @@ export const AnalyticsProvider = ({ children }) => {
     loadAnomalies,
     loadComparisons,
     loadAllData,
+    uploadCSVAndRefresh,
     trackEvent,
     updatePreferences,
     exportData,
     generateInsights,
     getMetricData,
+    setRestaurantAndReload,
     setDateRangeAndReload,
     clearError,
     

@@ -1,6 +1,6 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Optional, List, Dict, Any
 
 class SalesDataBase(BaseModel):
     transaction_id: Optional[str] = None
@@ -24,47 +24,40 @@ class SalesData(SalesDataBase):
     created_at: datetime
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-class CSVUploadCreate(BaseModel):
+class CSVUploadBase(BaseModel):
     filename: str
+    processed: bool
+    records_processed: int = 0
+    file_size: int = 0
+
+class CSVUploadCreate(CSVUploadBase):
+    restaurant_id: int
     file_path: str
-    columns_mapping: Dict[str, Any]
 
-class CSVUpload(BaseModel):
+class CSVUpload(CSVUploadBase):
     id: int
-    filename: str
+    restaurant_id: int
     file_path: str
     upload_date: datetime
-    processed: bool
-    columns_mapping: Dict[str, Any]
-    restaurant_id: int
     
     class Config:
-        orm_mode = True
+        from_attributes = True 
 
 class ColumnMapping(BaseModel):
-    date: str
-    item_name: str
-    category: Optional[str] = None
-    quantity: Optional[str] = None
-    price: str
-    total_amount: Optional[str] = None
-    payment_method: Optional[str] = None
-    customer_id: Optional[str] = None
-    staff_id: Optional[str] = None
-    notes: Optional[str] = None
+    column_name: str
+    field_name: str
 
 class AnalyticsRequest(BaseModel):
     restaurant_id: int
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
+    start_date: datetime
+    end_date: datetime
 
 class AnalyticsResponse(BaseModel):
-    total_revenue: float
-    total_transactions: int
-    average_transaction_value: float
-    top_selling_items: List[Dict[str, Any]]
+    summary: Dict[str, Any]
+    daily_sales: List[Dict[str, Any]]
+    top_items: List[Dict[str, Any]]
     sales_by_category: Dict[str, float]
     sales_by_payment_method: Dict[str, float]
     sales_by_day_of_week: Dict[str, float]

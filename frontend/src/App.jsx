@@ -11,7 +11,8 @@ import ProtectedRoute from './components/auth/ProtectedRoute/ProtectedRoute';
 
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('./pages/HomePage/HomePage'));
-const DashboardPage = lazy(() => import('./pages/DashboardPage/DashboardPage'));
+// const DashboardPage = lazy(() => import('./pages/DashboardPage/DashboardPage'));
+import DashboardPage from './pages/DashboardPage/DashboardPage';
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage/AnalyticsPage'));
 const DataPage = lazy(() => import('./pages/DataPage/DataPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage/SettingsPage'));

@@ -28,6 +28,15 @@ export const authService = {
     }
   },
 
+  createRestaurant: async (restaurantData) => {
+    try {
+      const response = await api.post('/restaurants/', restaurantData);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
   getCurrentUser: () => {
     return api.get('/auth/me');
   },
@@ -36,13 +45,27 @@ export const authService = {
     return api.put('/auth/me', userData);
   },
 
-  getRestaurant: () => {
-    return api.get('/restaurants/me');
+  getRestaurants: () => {
+    return api.get('/restaurants/');
   },
 
-  updateRestaurant: (restaurantData) => {
-    return api.put('/restaurants/me', restaurantData);
+  getRestaurant: (id) => {
+    return api.get(`/restaurants/${id}`);
   },
+
+  updateRestaurant: (id, restaurantData) => {
+    return api.put(`/restaurants/${id}`, restaurantData);
+  },
+
+  deleteRestaurant: (id) => {
+    return api.delete(`/restaurants/${id}`);
+  },
+
+  logout: () => {
+    localStorage.removeItem('auth_token');
+    delete api.defaults.headers.common['Authorization'];
+  }
+  
 };
 
 export default authService;

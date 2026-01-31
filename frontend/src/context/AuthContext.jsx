@@ -61,17 +61,15 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       setError(null);
       
-      const response = await authService.login(email, password);
-      
-      // FastAPI returns the object directly with 'access_token'
+      const data = await authService.login(email, password);
+      const response = data.data;
+      console.log('response: ',response)
       if (response && response.access_token) {
         const token = response.access_token;
-        
-        // Store the token
         localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
         
-        // Fetch the actual user data from the /me endpoint
         const userData = await authService.getCurrentUser();
+        console.log('user data: ',userData)
         localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
         
         setUser(userData);
@@ -83,7 +81,6 @@ export const AuthProvider = ({ children }) => {
         return { success: false, message: 'Login failed: Invalid response format' };
       }
     } catch (err) {
-      // FastAPI usually puts error details in err.response.data.detail
       const message = err.response?.data?.detail || err.message || 'Login failed';
       setError(message);
       return { success: false, message };
@@ -114,11 +111,8 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Logout function
   const logout = useCallback(async () => {
     try {
-      // No need to call logout endpoint if not implemented
-      // Just clear the local state
       clearAuth();
       navigate('/login');
     } catch (err) {
@@ -128,7 +122,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, [clearAuth, navigate]);
 
-  // Context value
   const value = {
     user,
     loading,
