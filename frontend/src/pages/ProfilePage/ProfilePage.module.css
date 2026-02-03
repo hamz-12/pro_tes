@@ -1,0 +1,32 @@
+/* Create pages/ProfilePage/ProfilePage.module.css */
+.profilePage {
+  padding: 2rem;
+  min-height: 100vh;
+}
+
+.pageHeader {
+  margin-bottom: 2rem;
+}
+
+.pageTitle {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 0.5rem;
+}
+
+.pageSubtitle {
+  font-size: 1.125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .profilePage {
+    padding: 1rem;
+  }
+  
+  .pageTitle {
+    font-size: 2rem;
+  }
+}

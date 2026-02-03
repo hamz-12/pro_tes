@@ -1,10 +1,11 @@
 from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional, List, Dict, Any
+from datetime import datetime, time
+from typing import Optional, List, Dict, Any, Union
 
 class SalesDataBase(BaseModel):
     transaction_id: Optional[str] = None
     date: datetime
+    time: Optional[time] = None
     item_name: str
     category: Optional[str] = None
     quantity: int = 1
@@ -58,9 +59,9 @@ class AnalyticsResponse(BaseModel):
     summary: Dict[str, Any]
     daily_sales: List[Dict[str, Any]]
     top_items: List[Dict[str, Any]]
-    sales_by_category: Dict[str, float]
+    sales_by_category: Union[Dict[str, float], List[Dict[str, Any]]]  # Allow both formats
     sales_by_payment_method: Dict[str, float]
     sales_by_day_of_week: Dict[str, float]
-    sales_by_hour: Dict[str, float]
+    sales_by_hour: Union[Dict[str, Any], List[Dict[str, Any]]]  # Allow both formats
     anomalies: List[Dict[str, Any]]
     insights: List[str]

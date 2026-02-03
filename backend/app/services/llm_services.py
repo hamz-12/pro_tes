@@ -1,10 +1,13 @@
 import json
 import re
 from typing import List, Dict, Any, Optional
-from langchain_huggingface import HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEndpoint,ChatHuggingFace
 from langchain_core.prompts import PromptTemplate
 from ..core.config import settings
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 
 token = os.getenv("HUGGINGFACE_API_TOKEN")
 
@@ -16,10 +19,9 @@ llm = HuggingFaceEndpoint(
     huggingfacehub_api_token=token
 )
 
+model = ChatHuggingFace(llm=llm)
+
 def detect_anomalies(sales_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Use LangChain + Hugging Face to detect anomalies in sales data
-    """
     template = """
     Analyze the following restaurant sales data and identify any unusual patterns or outliers:
     
@@ -53,10 +55,10 @@ def detect_anomalies(sales_data: Dict[str, Any]) -> List[Dict[str, Any]]:
     )
 
     try:
-        response = llm.invoke(formatted_prompt)
-        
-        # Open source models sometimes add markdown blocks like ```json ... ```
-        clean_response = response.strip().replace("```json", "").replace("```", "")
+        response = model.invoke(formatted_prompt)
+        content = response.content 
+                
+        clean_response = content.strip().replace("```json", "").replace("```", "")
         return json.loads(clean_response)
         
     except Exception as e:
@@ -80,8 +82,9 @@ def generate_insights(sales_data: Dict[str, Any]) -> List[str]:
     
     prompt = PromptTemplate.from_template(template)
     try:
-        response = llm.invoke(prompt.format(data_summary=data_summary))
-        clean_response = response.strip().replace("```json", "").replace("```", "")
+        response = model.invoke(prompt.format(data_summary=data_summary))
+        content = response.content
+        clean_response = content.strip().replace("```json", "").replace("```", "")
         return json.loads(clean_response)
     except:
         # Return fallback insights if the model fails
@@ -120,9 +123,11 @@ def map_csv_columns(columns: List[str]) -> Dict[str, str]:
     formatted_prompt = prompt.format(columns=json.dumps(columns))
     
     try:
-        response = llm.invoke(formatted_prompt)
-        # Clean up the response
-        clean_response = response.strip()
+        response = model.invoke(formatted_prompt)
+
+        content = response.content
+        
+        clean_response = content.strip()
         # Remove any markdown code blocks
         clean_response = re.sub(r'```json\s*', '', clean_response)
         clean_response = re.sub(r'```\s*$', '', clean_response)
@@ -204,3 +209,45 @@ def fallback_column_mapping(columns: List[str]) -> Dict[str, str]:
             mapping[col] = 'notes'
     
     return mapping
+
+
+if __name__ == "__main__":
+    test_sales_data = {
+        "summary": {
+            "total_revenue": 15450.50,
+            "total_transactions": 1016
+        },
+        "top_items": [
+            {"name": "Cheeseburger", "sales": 450},
+            {"name": "Truffle Fries", "sales": 320},
+            {"name": "Coke", "sales": 246}
+        ],
+        "sales_by_category": {
+            "Main Course": 8500,
+            "Sides": 4000,
+            "Beverages": 2950.50
+        },
+        "sales_by_day_of_week": {
+            "Monday": 1200,
+            "Friday": 4500,  # A clear spike
+            "Sunday": 800    # A clear drop
+        }
+    }
+
+    test_columns = ["Trx_ID", "Sale_Date", "Item_Description", "Unit_Price", "Qty_Sold", "Payment_Type"]
+
+    print("--- STARTING LLM SERVICE TESTS ---")
+
+    print("\n[1/3] Testing Column Mapping...")
+    mapping_result = map_csv_columns(test_columns)
+    print("Mapping Result:", json.dumps(mapping_result, indent=2))
+
+    print("\n[2/3] Testing Anomaly Detection...")
+    anomalies = detect_anomalies(test_sales_data)
+    print("Anomalies Found:", json.dumps(anomalies, indent=2))
+
+    print("\n[3/3] Testing Insights Generation...")
+    insights = generate_insights(test_sales_data)
+    print("Insights:", json.dumps(insights, indent=2))
+
+    print("\n--- TESTS COMPLETE ---")

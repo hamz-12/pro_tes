@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.config import settings
 from ...core.security import create_access_token
-from ...schemas.user import Token, UserCreate, User as UserSchema
-from ...services.auth import authenticate_user, create_user, get_user_by_email, get_user_by_username
+from ...schemas.user import Token, UserCreate, User as UserSchema, UserUpdate
+from ...services.auth import authenticate_user, create_user, get_user_by_email, get_user_by_username, update_user
 from ...api.deps import get_current_active_user
 
 router = APIRouter()
@@ -52,3 +52,28 @@ def login(
 @router.get("/me", response_model=UserSchema)
 def read_users_me(current_user: UserSchema = Depends(get_current_active_user)):
     return current_user
+
+
+@router.put("/me", response_model=UserSchema)
+def update_current_user(
+    user_update: UserUpdate,
+    current_user: UserSchema = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    # 1. Validation: If email is changing, check if new email is taken
+    if user_update.email and user_update.email != current_user.email:
+        if get_user_by_email(db, email=user_update.email):
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+    # 2. Validation: If username is changing, check if new username is taken
+    if user_update.username and user_update.username != current_user.username:
+        if get_user_by_username(db, username=user_update.username):
+            raise HTTPException(status_code=400, detail="Username already taken")
+
+    # 3. Call Service to perform update
+    updated_user = update_user(db, user_id=current_user.id, user_update=user_update)
+    
+    if not updated_user:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    return updated_user

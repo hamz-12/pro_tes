@@ -24,11 +24,31 @@ export const getAnalytics = async (restaurantId, startDate, endDate) => {
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
     
-    // Use GET request instead of POST
+    // Use GET request
     const response = await api.get(`/analytics/?${params.toString()}`);
     
     console.log('Analytics API response:', response.data);
-    return response.data;
+    
+    // Ensure the data structure is what the frontend expects
+    const data = response.data;
+    
+    // Convert sales_by_hour from object to array if needed
+    if (data.sales_by_hour && typeof data.sales_by_hour === 'object') {
+      data.sales_by_hour = Object.entries(data.sales_by_hour).map(([hour, values]) => ({
+        hour: parseInt(hour, 10),
+         ...values
+      }));
+    }
+    
+    // Convert sales_by_category from object to array if needed
+    if (data.sales_by_category && typeof data.sales_by_category === 'object') {
+      data.sales_by_category = Object.entries(data.sales_by_category).map(([category, revenue]) => ({
+        category,
+        total_revenue: revenue
+      }));
+    }
+    
+    return data;
   } catch (error) {
     console.error('Error in getAnalytics:', error);
     console.error('Error response:', error.response);

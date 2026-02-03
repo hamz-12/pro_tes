@@ -7,7 +7,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { NotificationProvider } from './context/NotificationContext';
 import Loading from './components/common/Loading/Loading';
 import ProtectedRoute from './components/auth/ProtectedRoute/ProtectedRoute';
-// import { ProtectedRoute } from "./context/AuthContext";
+import ProfilePage from './pages/ProfilePage/ProfilePage';
 
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('./pages/HomePage/HomePage'));
@@ -63,6 +63,11 @@ const AppRoutes = () => {
       <Route path="/settings" element={
         <ProtectedRoute>
           <SettingsPage />
+        </ProtectedRoute>
+      } />
+      <Route path="/profile" element={
+        <ProtectedRoute>
+          <ProfilePage />
         </ProtectedRoute>
       } />
       <Route path="*" element={<Navigate to="/" />} />

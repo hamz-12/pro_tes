@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Float, Text
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Float, Text, Time
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..core.database import Base
@@ -10,6 +10,7 @@ class SalesData(Base):
     id = Column(Integer, primary_key=True, index=True)
     transaction_id = Column(String, index=True)
     date = Column(DateTime, nullable=False)
+    time = Column(Time, nullable=True)
     item_name = Column(String, nullable=False)
     category = Column(String)
     quantity = Column(Integer, default=1)

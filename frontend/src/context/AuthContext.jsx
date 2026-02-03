@@ -111,6 +111,17 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUser = async (userData) => {
+    try {
+      const response = await api.put('/auth/me', userData);
+      setUser(response.data);
+      localStorage.setItem('userData', JSON.stringify(response.data));
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  };
+
   const logout = useCallback(async () => {
     try {
       clearAuth();
@@ -131,6 +142,7 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     clearAuth,
+    updateUser,
   };
 
   return (

@@ -41,7 +41,6 @@ def get_analytics(
         analytics_data['insights'] = ["Upload sales data to see insights and analytics"]
         print("No sales data found, returning default values")
     else:
-        # Generate AI insights only if we have data
         try:
             analytics_data['anomalies'] = detect_anomalies(analytics_data)
             analytics_data['insights'] = generate_insights(analytics_data)

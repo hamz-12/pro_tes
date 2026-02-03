@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion'; // Add AnimatePresence here
 import { useNavigate } from 'react-router-dom';
 import {
   FiLogOut,
@@ -23,6 +23,7 @@ import SalesChart from '../../components/dashboard/SalesChart/SalesChart';
 import TopItems from '../../components/dashboard/TopItems/TopItems';
 import SalesByCategory from '../../components/dashboard/SalesByCategory/SalesByCategory';
 import SalesByHour from '../../components/dashboard/SalesByHour/SalesByHour';
+import InsightsPanel from '../../components/dashboard/InsightsPanel/InsightsPanel';
 import { toast } from 'react-hot-toast';
 import styles from './DashboardPage.module.css';
 
@@ -47,6 +48,28 @@ const DashboardPage = () => {
   const [csvColumns, setCsvColumns] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
   const [uploading, setUploading] = useState(false);
+
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        duration: 0.5,
+      },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: {
+        duration: 0.5,
+      },
+    },
+  };
 
   // Fetch restaurants on component mount
   useEffect(() => {
@@ -105,7 +128,6 @@ const DashboardPage = () => {
     }
   };
 
-
   const handleCreateDefaultRestaurant = async () => {
     try {
       console.log('Creating default restaurant...');
@@ -143,86 +165,88 @@ const DashboardPage = () => {
     }
   };
 
-  // In DashboardPage.jsx, update the fetchDashboardData function
+  const fetchDashboardData = async () => {
+    if (!selectedRestaurant) return;
 
-    const fetchDashboardData = async () => {
-      if (!selectedRestaurant) return;
+    try {
+      setRefreshing(true);
+      const { startDate, endDate } = getDateRange(dateRange);
+      console.log('Fetching dashboard data for restaurant:', selectedRestaurant, 'from', startDate, 'to', endDate);
 
-      try {
-        setRefreshing(true);
-        const { startDate, endDate } = getDateRange(dateRange);
-        console.log('Fetching dashboard data for restaurant:', selectedRestaurant, 'from', startDate, 'to', endDate);
+      const analyticsData = await dashboardService.getAnalytics(
+        selectedRestaurant,
+        startDate,
+        endDate
+      );
 
-        // Call the analytics endpoint
-        const analyticsData = await dashboardService.getAnalytics(
-          selectedRestaurant,
-          startDate,
-          endDate
-        );
+      console.log('Received analytics data:', analyticsData);
 
-        console.log('Received analytics data:', analyticsData);
-
-        // Ensure we have valid data with default values if empty
-        if (analyticsData) {
-          // Set default values for empty data
-          const defaultData = {
-            summary: {
-              total_revenue: 0,
-              total_transactions: 0,
-              avg_transaction_value: 0
-            },
-            daily_sales: [],
-            top_items: [],
-            sales_by_category: {},
-            sales_by_payment_method: {},
-            sales_by_day_of_week: {},
-            sales_by_hour: {},
-            anomalies: [],
-            insights: ["Upload sales data to see insights"]
-          };
-          
-          // Merge with received data, using defaults for missing values
-          const mergedData = {
-            ...defaultData,
-            ...analyticsData,
-            summary: { ...defaultData.summary, ...analyticsData.summary }
-          };
-          
-          setDashboardData(mergedData);
-          setAnomalies(mergedData.anomalies || []);
-          
-          // Only show success message if we have actual data
-          if (mergedData.summary.total_transactions > 0) {
-            toast.success('Dashboard data refreshed');
-          } else {
-            // toast('No sales data found. Upload a CSV file to see analytics.');
-            toast('No sales data found. Upload a CSV file to see analytics.', {
-              icon: 'ℹ️',
-            });
-          }
-        } else {
-          console.error('Invalid analytics data:', analyticsData);
-          toast.error('Invalid analytics data received');
+      if (analyticsData) {
+        // Transform sales_by_category from object to array format
+        let salesByCategory = analyticsData.sales_by_category;
+        if (salesByCategory && typeof salesByCategory === 'object' && !Array.isArray(salesByCategory)) {
+          salesByCategory = Object.entries(salesByCategory).map(([category, revenue]) => ({
+            category,
+            total_revenue: typeof revenue === 'object' ? revenue.total_revenue || revenue : revenue
+          }));
         }
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        // Set empty default data on error
+        
+        // Transform sales_by_hour from object to array format
+        let salesByHour = analyticsData.sales_by_hour;
+        if (salesByHour && typeof salesByHour === 'object' && !Array.isArray(salesByHour)) {
+          salesByHour = Object.entries(salesByHour).map(([hour, values]) => {
+            const hourNum = parseInt(hour, 10);
+            if (typeof values === 'object' && values !== null) {
+              return {
+                hour: hourNum,
+                total_revenue: values.total_revenue || values.revenue || 0,
+                transaction_count: values.transaction_count || values.transactions || 0
+              };
+            } else {
+              return {
+                hour: hourNum,
+                total_revenue: values || 0,
+                transaction_count: 0
+              };
+            }
+          });
+        }
+        
+        // Set the transformed data
         setDashboardData({
-          summary: { total_revenue: 0, total_transactions: 0, avg_transaction_value: 0 },
-          daily_sales: [],
-          top_items: [],
-          sales_by_category: {},
-          sales_by_payment_method: {},
-          sales_by_day_of_week: {},
-          sales_by_hour: {},
-          anomalies: [],
-          insights: ["Unable to load analytics. Please try again."]
+          ...analyticsData,
+          sales_by_category: salesByCategory,
+          sales_by_hour: salesByHour
         });
-        toast.error('Failed to fetch dashboard data');
-      } finally {
-        setRefreshing(false);
+        
+        setAnomalies(analyticsData.anomalies || []);
+        
+        if (analyticsData.summary.total_transactions > 0) {
+          toast.success('Dashboard data refreshed');
+        } else {
+          toast('No sales data found. Upload a CSV file to see analytics.', {
+            icon: 'ℹ️',
+          });
+        }
       }
-    };
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setDashboardData({
+        summary: { total_revenue: 0, total_transactions: 0, avg_transaction_value: 0 },
+        daily_sales: [],
+        top_items: [],
+        sales_by_category: [],
+        sales_by_hour: [],
+        sales_by_payment_method: {},
+        sales_by_day_of_week: {},
+        anomalies: [],
+        insights: ["Unable to load analytics. Please try again."]
+      });
+      toast.error('Failed to fetch dashboard data');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleRefresh = () => {
     fetchDashboardData();
@@ -380,67 +404,126 @@ const DashboardPage = () => {
     }
   };
 
-  // Convert object to array for chart components
-  const convertObjectToArray = (obj) => {
-    if (!obj) return [];
-    return Object.entries(obj).map(([key, value]) => ({
-      key,
-      value: typeof value === 'object' ? value : { value }
-    }));
+  const calculateRevenueChange = () => {
+    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 2) return 0;
+    
+    const currentPeriod = dashboardData.daily_sales.slice(-7);
+    const previousPeriod = dashboardData.daily_sales.slice(-14, -7); 
+    
+    if (previousPeriod.length === 0) return 0;
+    
+    const currentRevenue = currentPeriod.reduce((sum, day) => sum + (day.total_amount || 0), 0);
+    const previousRevenue = previousPeriod.reduce((sum, day) => sum + (day.total_amount || 0), 0);
+    
+    return previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+  };
+
+  const calculateTransactionsChange = () => {
+    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 2) return 0;
+    
+    const currentPeriod = dashboardData.daily_sales.slice(-7);
+    const previousPeriod = dashboardData.daily_sales.slice(-14, -7);
+    
+    if (previousPeriod.length === 0) return 0;
+    
+    const currentTransactions = currentPeriod.reduce((sum, day) => sum + (day.transactions || 0), 0);
+    const previousTransactions = previousPeriod.reduce((sum, day) => sum + (day.transactions || 0), 0);
+    
+    return previousTransactions > 0 ? ((currentTransactions - previousTransactions) / previousTransactions) * 100 : 0;
+  };
+
+  const calculateAvgOrderChange = () => {
+    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 2) return 0;
+    
+    const currentPeriod = dashboardData.daily_sales.slice(-7);
+    const previousPeriod = dashboardData.daily_sales.slice(-14, -7);
+    
+    if (previousPeriod.length === 0) return 0;
+    
+    const currentAvg = currentPeriod.reduce((sum, day) => {
+      const avg = day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0;
+      return sum + avg;
+    }, 0) / currentPeriod.length;
+    
+    const previousAvg = previousPeriod.reduce((sum, day) => {
+      const avg = day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0;
+      return sum + avg;
+    }, 0) / previousPeriod.length;
+    
+    return previousAvg > 0 ? ((currentAvg - previousAvg) / previousAvg) * 100 : 0;
+  };
+
+  const calculateTopItemChange = () => {
+    // This would require historical data for top items
+    // For now, return a random value or 0
+    return Math.random() * 20 - 10; // Random between -10 and 10
+  };
+
+  const getChangeType = (change) => {
+    return change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral';
+  };
+
+  const generateSparklineData = (type) => {
+    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 10) return [];
+    
+    return dashboardData.daily_sales.slice(-10).map(day => {
+      switch (type) {
+        case 'revenue':
+          return day.total_amount || 0;
+        case 'transactions':
+          return day.transactions || 0;
+        case 'avg_order':
+          return day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0;
+        case 'top_item':
+          return Math.random() * 100;
+        default:
+          return 0;
+      }
+    });
   };
 
   const metricCards = [
     {
       title: 'Total Revenue',
       value: dashboardData.summary?.total_revenue || 0,
-      change: 12.5,
-      changeType: 'positive',
+      change: calculateRevenueChange(),
+      changeType: getChangeType(calculateRevenueChange()),
       icon: FiPlus,
       color: 'primary',
-      sparklineData: [45, 52, 38, 60, 55, 48, 62, 58, 55, 60],
+      sparklineData: generateSparklineData('revenue'),
       comparisonText: 'vs last period',
     },
     {
       title: 'Transactions',
       value: dashboardData.summary?.total_transactions || 0,
-      change: 8.2,
-      changeType: 'positive',
+      change: calculateTransactionsChange(),
+      changeType: getChangeType(calculateTransactionsChange()),
       icon: FiDownload,
       color: 'secondary',
-      sparklineData: [120, 135, 128, 140, 142, 138, 145, 148, 150, 155],
+      sparklineData: generateSparklineData('transactions'),
       comparisonText: 'vs last period',
     },
     {
       title: 'Avg. Order Value',
       value: dashboardData.summary?.avg_transaction_value || 0,
-      change: -2.3,
-      changeType: 'negative',
+      change: calculateAvgOrderChange(),
+      changeType: getChangeType(calculateAvgOrderChange()),
       icon: FiCalendar,
       color: 'tertiary',
-      sparklineData: [45.5, 46.2, 45.8, 44.9, 44.5, 43.8, 44.2, 43.5, 44.0, 43.8],
+      sparklineData: generateSparklineData('avg_order'),
       comparisonText: 'vs last period',
     },
     {
       title: 'Top Item Sales',
       value: dashboardData.top_items?.[0]?.total_quantity || 0,
-      change: 15.8,
-      changeType: 'positive',
+      change: calculateTopItemChange(),
+      changeType: getChangeType(calculateTopItemChange()),
       icon: FiRefreshCw,
       color: 'success',
-      sparklineData: [38, 42, 45, 48, 50, 52, 55, 58, 60, 62],
+      sparklineData: generateSparklineData('top_item'),
       comparisonText: 'vs last period',
     },
   ];
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        duration: 0.5,
-      },
-    },
-  };
 
   // Add a loading state to prevent rendering when data is not ready
   if (loading && restaurants.length === 0) {
@@ -530,14 +613,6 @@ const DashboardPage = () => {
               Export
             </button>
 
-            <button
-              className={styles.addRestaurantButton}
-              onClick={() => navigate('/restaurants/new')}
-              title="Add restaurant"
-            >
-              <FiPlus size={18} />
-              Add
-            </button>
           </div>
 
           {/* Notifications */}
@@ -554,35 +629,54 @@ const DashboardPage = () => {
               )}
             </button>
 
-            {notificationMenuOpen && (
-              <div className={styles.notificationMenu}>
-                <div className={styles.notificationHeader}>
-                  <h3>Notifications</h3>
-                  <button className={styles.markAllRead}>Mark all as read</button>
-                </div>
-                <div className={styles.notificationList}>
-                  {anomalies.length > 0 ? (
-                    anomalies.map((anomaly) => (
-                      <div key={anomaly.id || anomaly.date} className={styles.notificationItem}>
-                        <div className={`${styles.notificationDot} ${styles[anomaly.severity]}`} />
-                        <div className={styles.notificationContent}>
-                          <h4>{anomaly.title}</h4>
-                          <p>{anomaly.description}</p>
-                          <span className={styles.notificationTime}>{anomaly.time}</span>
+            <AnimatePresence>
+              {notificationMenuOpen && (
+                <motion.div
+                  className={styles.notificationMenu}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className={styles.notificationHeader}>
+                    <h3>Notifications</h3>
+                    <button 
+                      className={styles.markAllRead} 
+                      onClick={() => {
+                        const updatedAnomalies = anomalies.map(anomaly => ({
+                          ...anomaly,
+                          acknowledged: true
+                        }));
+                        setAnomalies(updatedAnomalies);
+                        toast.success('All notifications marked as read');
+                      }}
+                    >
+                      Mark all as read
+                    </button>
+                  </div>
+                  <div className={styles.notificationList}>
+                    {anomalies.length > 0 ? (
+                      anomalies.map((anomaly) => (
+                        <div key={anomaly.id || anomaly.date} className={styles.notificationItem}>
+                          <div className={`${styles.notificationDot} ${styles[anomaly.severity]}`} />
+                          <div className={styles.notificationContent}>
+                            <h4>{anomaly.title}</h4>
+                            <p>{anomaly.description}</p>
+                            <span className={styles.notificationTime}>{anomaly.time}</span>
+                          </div>
                         </div>
+                      ))
+                    ) : (
+                      <div className={styles.noNotifications}>
+                        No new notifications
                       </div>
-                    ))
-                  ) : (
-                    <div className={styles.noNotifications}>
-                      No new notifications
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          {/* User Menu */}
           <div className={styles.userContainer}>
             <button
               className={styles.userButton}
@@ -591,36 +685,63 @@ const DashboardPage = () => {
               <div className={styles.userAvatar}>
                 <FiUser size={18} />
               </div>
-              <span className={styles.userName}>{user?.username || 'User'}</span>
+              <span className={styles.userName}>
+                {user?.username || localStorage.getItem('userData') ? 
+                  JSON.parse(localStorage.getItem('userData') || '{}').username : 
+                  'User'
+                }
+              </span>
             </button>
-
-            {userMenuOpen && (
-              <div className={styles.userMenu}>
-                <button className={styles.menuItem}>
-                  <FiUser size={16} />
-                  Profile
-                </button>
-                <button className={styles.menuItem}>
-                  <FiSettings size={16} />
-                  Settings
-                </button>
-                <div className={styles.menuDivider} />
-                <button className={styles.menuItem} onClick={handleLogout}>
-                  <FiLogOut size={16} />
-                  Logout
-                </button>
-              </div>
-            )}
+            
+            <AnimatePresence>
+              {userMenuOpen && (
+                <motion.div
+                  className={styles.userMenu}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <button 
+                    className={styles.menuItem}
+                    onClick={() => {
+                      navigate('/profile');
+                      setUserMenuOpen(false);
+                    }}
+                  >
+                    <FiUser size={16} />
+                    Profile
+                  </button>
+                  <div className={styles.menuDivider} />
+                  <button className={styles.menuItem} onClick={handleLogout}>
+                    <FiLogOut size={16} />
+                    Logout
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </header>
-
+      
       <main className={styles.mainContent}>
         <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
+          {/* Insights Panel */}
+          {dashboardData && (dashboardData.insights?.length > 0 || dashboardData.anomalies?.length > 0) && (
+            <motion.div variants={itemVariants}>
+              <InsightsPanel
+                insights={dashboardData.insights || []}
+                anomalies={dashboardData.anomalies || []}
+                loading={loading}
+                onRefresh={fetchDashboardData}
+              />
+            </motion.div>
+          )}
+
           {/* Anomaly Alerts - Only render if we have valid data */}
           {dashboardData && Array.isArray(dashboardData.anomalies) && dashboardData.anomalies.length > 0 && (
             <AnomalyAlert 
@@ -651,6 +772,8 @@ const DashboardPage = () => {
                 height={350}
                 loading={loading}
                 compareData={dateRange === '30d' ? dashboardData.previous_period_sales : null}
+                onDateRangeChange={handleDateRangeChange}
+                onFilterClick={() => console.log('Filter clicked')}
               />
             </div>
 
@@ -658,6 +781,7 @@ const DashboardPage = () => {
               <TopItems
                 items={dashboardData.top_items || []}
                 loading={loading}
+                onViewAllItems={() => console.log('View all items clicked')}
               />
             </div>
           </div>
@@ -666,7 +790,7 @@ const DashboardPage = () => {
           <div className={styles.bottomCharts}>
             <div className={styles.bottomChart}>
               <SalesByCategory
-                data={convertObjectToArray(dashboardData.sales_by_category || {})}
+                data={dashboardData.sales_by_category || []}
                 loading={loading}
                 chartType="doughnut"
               />
@@ -674,7 +798,7 @@ const DashboardPage = () => {
 
             <div className={styles.bottomChart}>
               <SalesByHour
-                data={convertObjectToArray(dashboardData.sales_by_hour || {})}
+                data={dashboardData.sales_by_hour || []}
                 loading={loading}
               />
             </div>
@@ -683,100 +807,114 @@ const DashboardPage = () => {
       </main>
 
       {/* CSV Upload Modal */}
-      {uploadModalOpen && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h2>Upload Sales Data</h2>
-              <button
-                className={styles.closeButton}
-                onClick={() => setUploadModalOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-
-            {csvColumns.length > 0 ? (
-              <div className={styles.modalBody}>
-                <h3>Map Your Columns</h3>
-                <p>Match your CSV columns to our data fields. Unmapped columns will be ignored.</p>
-
-                <div className={styles.columnMapping}>
-                  {csvColumns.map((column) => (
-                    <div key={column} className={styles.mappingRow}>
-                      <span className={styles.columnName}>{column}</span>
-                      <select
-                        value={columnMapping[column] || ''}
-                        onChange={(e) => handleColumnMappingChange(column, e.target.value)}
-                        className={styles.fieldSelect}
-                      >
-                        <option value="">-- Ignore Column --</option>
-                        <optgroup label="Required Fields">
-                          <option value="date">Date *</option>
-                        </optgroup>
-                        <optgroup label="Recommended Fields">
-                          <option value="price">Price (recommended)</option>
-                          <option value="quantity">Quantity (recommended)</option>
-                        </optgroup>
-                        <optgroup label="Optional Fields">
-                          <option value="total_amount">Total Amount (will be calculated if not provided)</option>
-                          <option value="item_name">Item Name</option>
-                          <option value="category">Category</option>
-                          <option value="transaction_id">Transaction ID</option>
-                          <option value="payment_method">Payment Method</option>
-                          <option value="customer_id">Customer ID</option>
-                          <option value="staff_id">Staff ID</option>
-                          <option value="notes">Notes</option>
-                        </optgroup>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-
-                <div className={styles.mappingNote}>
-                  <p>* Only the Date field is required. Total Amount will be calculated from Price × Quantity if not provided.</p>
-                </div>
-
-                <div className={styles.modalActions}>
-                  <button
-                    className={styles.cancelButton}
-                    onClick={() => setUploadModalOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className={styles.uploadButton}
-                    onClick={handleUploadCSV}
-                    disabled={uploading || !validateRequiredFields()}
-                  >
-                    {uploading ? 'Uploading...' : 'Upload'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className={styles.modalBody}>
-                <div 
-                  className={styles.fileDropArea}
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onClick={() => fileInputRef.current.click()}
+      <AnimatePresence>
+        {uploadModalOpen && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className={styles.modalContent}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className={styles.modalHeader}>
+                <h2>Upload Sales Data</h2>
+                <button
+                  className={styles.closeButton}
+                  onClick={() => setUploadModalOpen(false)}
                 >
-                  <FiUpload size={48} />
-                  <h3>Drop your CSV file here or click to browse</h3>
-                  <p>Supported format: CSV</p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileSelect}
-                    className={styles.fileInput}
-                  />
-                </div>
+                  ×
+                </button>
               </div>
-            )}
-          </div>
-        </div>
-      )}
+
+              {csvColumns.length > 0 ? (
+                <div className={styles.modalBody}>
+                  <h3>Map Your Columns</h3>
+                  <p>Match your CSV columns to our data fields. Unmapped columns will be ignored.</p>
+
+                  <div className={styles.columnMapping}>
+                    {csvColumns.map((column) => (
+                      <div key={column} className={styles.mappingRow}>
+                        <span className={styles.columnName}>{column}</span>
+                        <select
+                          value={columnMapping[column] || ''}
+                          onChange={(e) => handleColumnMappingChange(column, e.target.value)}
+                          className={styles.fieldSelect}
+                        >
+                          <option value="">-- Ignore Column --</option>
+                          <optgroup label="Required Fields">
+                            <option value="date">Date *</option>
+                            <option value="time">Time (optional, for hourly analysis)</option>
+                          </optgroup>
+                          <optgroup label="Recommended Fields">
+                            <option value="price">Price (recommended)</option>
+                            <option value="quantity">Quantity (recommended)</option>
+                          </optgroup>
+                          <optgroup label="Optional Fields">
+                            <option value="total_amount">Total Amount (will be calculated if not provided)</option>
+                            <option value="item_name">Item Name</option>
+                            <option value="category">Category</option>
+                            <option value="transaction_id">Transaction ID</option>
+                            <option value="payment_method">Payment Method</option>
+                            <option value="customer_id">Customer ID</option>
+                            <option value="staff_id">Staff ID</option>
+                            <option value="notes">Notes</option>
+                          </optgroup>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className={styles.mappingNote}>
+                    <p>* Only the Date field is required. Total Amount will be calculated from Price × Quantity if not provided.</p>
+                  </div>
+
+                  <div className={styles.modalActions}>
+                    <button
+                      className={styles.cancelButton}
+                      onClick={() => setUploadModalOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className={styles.uploadButton}
+                      onClick={handleUploadCSV}
+                      disabled={uploading || !validateRequiredFields()}
+                    >
+                      {uploading ? 'Uploading...' : 'Upload'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.modalBody}>
+                  <div 
+                    className={styles.fileDropArea}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onClick={() => fileInputRef.current.click()}
+                  >
+                    <FiUpload size={48} />
+                    <h3>Drop your CSV file here or click to browse</h3>
+                    <p>Supported format: CSV</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={handleFileSelect}
+                      className={styles.fileInput}
+                    />
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

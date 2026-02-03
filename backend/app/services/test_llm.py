@@ -8,10 +8,10 @@ token = os.getenv("HUGGINGFACE_API_TOKEN")
 # 1. Use huggingfacehub_api_token instead of token
 llm = HuggingFaceEndpoint(
     repo_id="Qwen/Qwen2.5-7B-Instruct",
-    # task="text-generation",
     max_new_tokens=1000,
     temperature=0.1,
-    huggingfacehub_api_token=token  # Correct parameter name
+    huggingfacehub_api_token=token,
+    provider="hf-inference"
 )
     
 llm_engine = ChatHuggingFace(llm=llm)

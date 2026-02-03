@@ -1,3 +1,4 @@
+// frontend/src/components/dashboard/SalesByCategory/SalesByCategory.jsx
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Doughnut, Pie } from 'react-chartjs-2';
@@ -22,19 +23,49 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
   const [sortBy, setSortBy] = useState('revenue');
 
   const processedData = useMemo(() => {
-    if (!data.length) return { chartData: null, totalRevenue: 0 };
+    // Handle different data structures
+    let dataArray = [];
+    
+    if (Array.isArray(data)) {
+      dataArray = data;
+    } else if (data && typeof data === 'object') {
+      // Convert object to array
+      dataArray = Object.entries(data).map(([category, values]) => {
+        if (typeof values === 'object' && values !== null) {
+          return { category, ...values };
+        }
+        return { category, total_revenue: values };
+      });
+    }
+    
+    if (dataArray.length === 0) {
+      return { chartData: null, totalRevenue: 0, sortedData: [] };
+    }
 
-    const sortedData = [...data].sort((a, b) => {
-      if (sortBy === 'revenue') return b.total_revenue - a.total_revenue;
+    const validData = dataArray.filter(item => 
+      item && item.category && (item.total_revenue > 0 || item.revenue > 0)
+    );
+    
+    if (validData.length === 0) {
+      return { chartData: null, totalRevenue: 0, sortedData: [] };
+    }
+
+    const sortedData = [...validData].sort((a, b) => {
+      const aValue = a.total_revenue || a.revenue || 0;
+      const bValue = b.total_revenue || b.revenue || 0;
+      
+      if (sortBy === 'revenue') return bValue - aValue;
+      
       if (sortBy === 'percentage') {
-        const totalA = a.total_revenue / data.reduce((sum, item) => sum + item.total_revenue, 0);
-        const totalB = b.total_revenue / data.reduce((sum, item) => sum + item.total_revenue, 0);
-        return totalB - totalA;
+        const aPercentage = totalRevenue > 0 ? (aValue / totalRevenue) * 100 : 0;
+        const bPercentage = totalRevenue > 0 ? (bValue / totalRevenue) * 100 : 0;
+        return bPercentage - aPercentage;
       }
+      
       return 0;
     });
 
-    const totalRevenue = sortedData.reduce((sum, item) => sum + item.total_revenue, 0);
+    const totalRevenue = sortedData.reduce((sum, item) => sum + (item.total_revenue || item.revenue || 0), 0);
 
     const colors = [
       '#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b',
@@ -45,7 +76,7 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
       labels: sortedData.map(item => item.category),
       datasets: [
         {
-          data: sortedData.map(item => item.total_revenue),
+          data: sortedData.map(item => item.total_revenue || item.revenue || 0),
           backgroundColor: colors.slice(0, sortedData.length),
           borderColor: colors.slice(0, sortedData.length).map(color => color + '80'),
           borderWidth: 2,
@@ -77,7 +108,7 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
           label: (context) => {
             const value = context.raw;
             const total = processedData.totalRevenue;
-            const percentage = ((value / total) * 100).toFixed(1);
+            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
             return [
               `${context.label}: ${formatCurrency(value)}`,
               `Percentage: ${percentage}%`,
@@ -156,7 +187,7 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
     );
   }
 
-  if (!data.length) {
+  if (!processedData.chartData) {
     return (
       <div className={styles.container}>
         <div className={styles.emptyState}>
@@ -267,12 +298,13 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
           
           <div className={styles.legendList}>
             {processedData.sortedData.map((item, index) => {
-              const percentage = (item.total_revenue / processedData.totalRevenue) * 100;
+              const revenue = item.total_revenue || item.revenue || 0;
+              const percentage = processedData.totalRevenue > 0 ? (revenue / processedData.totalRevenue) * 100 : 0;
               const isSelected = selectedCategory === item.category;
               
               return (
                 <motion.div
-                  key={item.category}
+                  key={`category-${item.category}`} // Add key prop to fix React warning
                   className={`${styles.legendItem} ${isSelected ? styles.selected : ''}`}
                   onClick={() => setSelectedCategory(
                     isSelected ? null : item.category
@@ -295,7 +327,7 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
                     <div className={styles.categoryInfo}>
                       <span className={styles.categoryName}>{item.category}</span>
                       <span className={styles.categoryRevenue}>
-                        {formatCurrency(item.total_revenue)}
+                        {formatCurrency(revenue)}
                       </span>
                     </div>
                     
@@ -304,7 +336,9 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
                         <motion.div
                           className={styles.progressFill}
                           initial={{ width: 0 }}
-                          animate={{ width: `${percentage}%` }}
+                          animate={{ 
+                            width: `${isNaN(percentage) ? 0 : percentage}%` // Fix NaN issue
+                          }}
                           transition={{ delay: index * 0.1 + 0.3, duration: 0.8 }}
                           style={{
                             backgroundColor: processedData.chartData.datasets[0].backgroundColor[index],
@@ -343,13 +377,14 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
             </button>
           </div>
           <div className={styles.detailContent}>
-            {data.find(item => item.category === selectedCategory) && (
+            {processedData.sortedData.find(item => item.category === selectedCategory) && (
               <>
                 <div className={styles.detailStat}>
                   <span className={styles.detailLabel}>Total Revenue</span>
                   <span className={styles.detailValue}>
                     {formatCurrency(
-                      data.find(item => item.category === selectedCategory).total_revenue
+                      processedData.sortedData.find(item => item.category === selectedCategory).total_revenue || 
+                      processedData.sortedData.find(item => item.category === selectedCategory).revenue
                     )}
                   </span>
                 </div>
@@ -357,7 +392,8 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
                   <span className={styles.detailLabel}>Percentage of Total</span>
                   <span className={styles.detailValue}>
                     {formatPercentage(
-                      (data.find(item => item.category === selectedCategory).total_revenue /
+                      ((processedData.sortedData.find(item => item.category === selectedCategory).total_revenue || 
+                        processedData.sortedData.find(item => item.category === selectedCategory).revenue) / 
                        processedData.totalRevenue) * 100
                     )}
                   </span>
@@ -368,37 +404,6 @@ const SalesByCategory = ({ data = [], loading = false, chartType = 'doughnut' })
         </motion.div>
       )}
     </motion.div>
-  );
-};
-
-const Bar = ({ data, options }) => {
-  return (
-    <div className={styles.barChart}>
-      {/* Bar chart implementation would use react-chartjs-2 Bar component */}
-      <div className={styles.barChartPlaceholder}>
-        {data.labels.map((label, index) => {
-          const value = data.datasets[0].data[index];
-          const max = Math.max(...data.datasets[0].data);
-          const height = (value / max) * 100;
-          
-          return (
-            <div key={label} className={styles.barContainer}>
-              <motion.div
-                className={styles.bar}
-                initial={{ height: 0 }}
-                animate={{ height: `${height}%` }}
-                transition={{ delay: index * 0.05, duration: 0.8 }}
-                style={{
-                  backgroundColor: data.datasets[0].backgroundColor[index],
-                }}
-              />
-              <span className={styles.barLabel}>{label}</span>
-              <span className={styles.barValue}>{formatCurrency(value)}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 };
 
