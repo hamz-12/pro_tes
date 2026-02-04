@@ -1,3 +1,4 @@
+# models/sales.py
 from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Float, Text, Time
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -20,10 +21,16 @@ class SalesData(Base):
     customer_id = Column(String)
     staff_id = Column(String)
     notes = Column(Text)
+    
+    purchase_type = Column(String, nullable=True)  
+    manager = Column(String, nullable=True)       
+    city = Column(String, nullable=True)           
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     restaurant_id = Column(Integer, ForeignKey("restaurants.id"))
     restaurant = relationship("Restaurant", back_populates="sales_data")
+
 
 class CSVUpload(Base):
     __tablename__ = "csv_uploads"

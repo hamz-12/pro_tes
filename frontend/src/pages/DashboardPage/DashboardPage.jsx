@@ -1,31 +1,59 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion'; // Add AnimatePresence here
+// pages/DashboardPage/DashboardPage.jsx
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   FiLogOut,
-  FiSettings,
   FiBell,
   FiUser,
   FiRefreshCw,
   FiDownload,
   FiUpload,
   FiPlus,
-  FiCalendar
+  FiCalendar,
+  FiCheck
 } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import * as dashboardService from '../../services/dashboardService';
+import { 
+  useRestaurants, 
+  useAnalytics, 
+  useCreateRestaurant,
+  useUploadCSV,
+  usePreviewCSV,
+  useRefreshDashboard 
+} from '../../hooks/useDashboardData';
 import { getDateRange } from '../../utils/dateUtils';
-import Dashboard from '../../components/dashboard/Dashboard/Dashboard';
-import AnomalyAlert from '../../components/dashboard/AnomalyAlert/AnomalyAlert';
 import MetricCard from '../../components/dashboard/MetricCard/MetricCard';
 import SalesChart from '../../components/dashboard/SalesChart/SalesChart';
 import TopItems from '../../components/dashboard/TopItems/TopItems';
-import SalesByCategory from '../../components/dashboard/SalesByCategory/SalesByCategory';
 import SalesByHour from '../../components/dashboard/SalesByHour/SalesByHour';
 import InsightsPanel from '../../components/dashboard/InsightsPanel/InsightsPanel';
+import SalesByPurchaseType from '../../components/dashboard/SalesByPurchaseType/SalesByPurchaseType';
+import SalesByPaymentMethod from '../../components/dashboard/SalesByPaymentMethod/SalesByPaymentMethod';
+import ManagerPerformance from '../../components/dashboard/ManagerPerformance/ManagerPerformance';
+import SalesByCity from '../../components/dashboard/SalesByCity/SalesByCity';
 import { toast } from 'react-hot-toast';
 import styles from './DashboardPage.module.css';
+
+// Helper to get acknowledged notifications from localStorage
+const getAcknowledgedNotifications = () => {
+  try {
+    const stored = localStorage.getItem('acknowledged_notifications');
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+// Helper to save acknowledged notifications to localStorage
+const saveAcknowledgedNotifications = (ids) => {
+  try {
+    localStorage.setItem('acknowledged_notifications', JSON.stringify(ids));
+  } catch (e) {
+    console.warn('Failed to save acknowledged notifications:', e);
+  }
+};
 
 const DashboardPage = () => {
   const { user, logout } = useAuth();
@@ -33,440 +61,321 @@ const DashboardPage = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
 
-  // State management
-  const [restaurants, setRestaurants] = useState([]);
+  // Local state
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
-  const [dashboardData, setDashboardData] = useState({});
-  const [anomalies, setAnomalies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [dateRange, setDateRange] = useState('2y');
+  const [dateRange, setDateRange] = useState('all');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
   const [csvColumns, setCsvColumns] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
-  const [uploading, setUploading] = useState(false);
+  
+  // Acknowledged notifications state - persisted in localStorage
+  const [acknowledgedIds, setAcknowledgedIds] = useState(() => getAcknowledgedNotifications());
 
-  // Animation variants
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        duration: 0.5,
-      },
-    },
-  };
+  // Calculate date range
+  const { startDate, endDate } = useMemo(() => getDateRange(dateRange), [dateRange]);
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.5,
-      },
-    },
-  };
+  // React Query hooks - CACHED DATA FETCHING
+  const { 
+    data: restaurants = [], 
+    isLoading: restaurantsLoading,
+    error: restaurantsError 
+  } = useRestaurants();
 
-  // Fetch restaurants on component mount
+  const { 
+    data: analyticsData, 
+    isLoading: analyticsLoading,
+    isFetching: analyticsRefreshing,
+    error: analyticsError,
+    refetch: refetchAnalytics
+  } = useAnalytics(selectedRestaurant, startDate, endDate, {
+    enabled: !!selectedRestaurant,
+  });
+
+  // Mutations
+  const createRestaurantMutation = useCreateRestaurant();
+  const uploadCSVMutation = useUploadCSV();
+  const previewCSVMutation = usePreviewCSV();
+  const { refreshAnalytics } = useRefreshDashboard();
+
+  // Set first restaurant as selected when restaurants load
   useEffect(() => {
-    fetchRestaurants();
+    if (restaurants.length > 0 && !selectedRestaurant) {
+      setSelectedRestaurant(restaurants[0].id);
+    } else if (restaurants.length === 0 && !restaurantsLoading) {
+      handleCreateDefaultRestaurant();
+    }
+  }, [restaurants, restaurantsLoading, selectedRestaurant]);
+
+  // Memoized dashboard data with defaults
+  const dashboardData = useMemo(() => {
+    if (!analyticsData) {
+      return {
+        summary: { total_revenue: 0, total_transactions: 0, avg_transaction_value: 0 },
+        daily_sales: [],
+        top_items: [],
+        sales_by_hour: [],
+        sales_by_payment_method: {},
+        sales_by_day_of_week: {},
+        sales_by_purchase_type: {},
+        sales_by_manager: {},
+        sales_by_city: {},
+        anomalies: [],
+        insights: []
+      };
+    }
+    return analyticsData;
+  }, [analyticsData]);
+
+  // Process anomalies with unique IDs and acknowledged status
+  const notifications = useMemo(() => {
+    const rawAnomalies = dashboardData.anomalies || [];
+    
+    return rawAnomalies.map((anomaly, index) => {
+      // Generate a unique ID for each anomaly
+      const id = anomaly.id || `anomaly_${index}_${anomaly.description?.substring(0, 20) || index}`;
+      
+      return {
+        ...anomaly,
+        id,
+        acknowledged: acknowledgedIds.includes(id),
+        title: anomaly.title || anomaly.description?.substring(0, 50) || 'Anomaly Detected',
+        severity: anomaly.severity || 'info',
+        time: anomaly.date || anomaly.time || 'Recently'
+      };
+    });
+  }, [dashboardData.anomalies, acknowledgedIds]);
+
+  // Count unread notifications
+  const unreadCount = useMemo(() => {
+    return notifications.filter(n => !n.acknowledged).length;
+  }, [notifications]);
+
+  // Mark single notification as read
+  const handleMarkAsRead = useCallback((notificationId) => {
+    setAcknowledgedIds(prev => {
+      if (prev.includes(notificationId)) return prev;
+      const updated = [...prev, notificationId];
+      saveAcknowledgedNotifications(updated);
+      return updated;
+    });
   }, []);
 
-  // Fetch dashboard data when restaurant or date range changes
-  useEffect(() => {
-    if (selectedRestaurant) {
-      fetchDashboardData();
-    }
-  }, [selectedRestaurant, dateRange]);
+  // Mark all notifications as read
+  const handleMarkAllAsRead = useCallback(() => {
+    const allIds = notifications.map(n => n.id);
+    setAcknowledgedIds(allIds);
+    saveAcknowledgedNotifications(allIds);
+    toast.success('All notifications marked as read');
+  }, [notifications]);
 
-  const fetchRestaurants = async () => {
+  // Clear all acknowledged (reset)
+  const handleClearAcknowledged = useCallback(() => {
+    setAcknowledgedIds([]);
+    saveAcknowledgedNotifications([]);
+  }, []);
+
+  // Handlers
+  const handleCreateDefaultRestaurant = useCallback(async () => {
     try {
-      setLoading(true);
-      console.log('Starting to fetch restaurants...');
-      const restaurantsData = await dashboardService.getRestaurants();
-      console.log('Received restaurants data:', restaurantsData);
-      
-      // Check if we received valid data
-      if (restaurantsData) {
-        // If the data is not an array, check if it's wrapped in a response object
-        let restaurantsArray = restaurantsData;
-        if (!Array.isArray(restaurantsData)) {
-          if (restaurantsData.data && Array.isArray(restaurantsData.data)) {
-            restaurantsArray = restaurantsData.data;
-          } else {
-            console.error('Invalid restaurants data format:', restaurantsData);
-            toast.error('Invalid restaurants data format received');
-            return;
-          }
-        }
-        
-        console.log('Setting restaurants array:', restaurantsArray);
-        setRestaurants(restaurantsArray);
-
-        // Select first restaurant by default
-        if (restaurantsArray.length > 0) {
-          console.log('Selecting first restaurant:', restaurantsArray[0].id);
-          setSelectedRestaurant(restaurantsArray[0].id);
-        } else {
-          console.log('No restaurants found, creating a default one');
-          // Create a default restaurant if none exist
-          handleCreateDefaultRestaurant();
-        }
-      } else {
-        console.error('No restaurants data received');
-        toast.error('No restaurants data received');
-      }
-    } catch (error) {
-      console.error('Error fetching restaurants:', error);
-      toast.error('Failed to fetch restaurants');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateDefaultRestaurant = async () => {
-    try {
-      console.log('Creating default restaurant...');
-      
-      // Create a default restaurant by calling the API
-      const defaultRestaurantData = {
+      const result = await createRestaurantMutation.mutateAsync({
         name: 'Default Restaurant',
         address: '123 Main St',
         phone: '555-1234',
         email: 'default@restaurant.com',
         description: 'Default restaurant for analytics'
-      };
-      
-      const createdRestaurant = await dashboardService.createRestaurant(defaultRestaurantData);
-      console.log('Created restaurant:', createdRestaurant);
-      
-      // Add the new restaurant to the list and select it
-      setRestaurants([createdRestaurant]);
-      setSelectedRestaurant(createdRestaurant.id);
-      toast.success('Created default restaurant');
+      });
+      if (result?.id) {
+        setSelectedRestaurant(result.id);
+      }
     } catch (error) {
       console.error('Error creating default restaurant:', error);
-      
-      // If API call fails, create a local placeholder (for UI purposes only)
-      const defaultRestaurant = {
-        id: 1,
-        name: 'Default Restaurant',
-        address: '123 Main St',
-        phone: '555-1234',
-        email: 'default@restaurant.com'
-      };
-      setRestaurants([defaultRestaurant]);
-      setSelectedRestaurant(defaultRestaurant.id);
-      toast.error('Failed to create restaurant in database, showing placeholder');
     }
-  };
+  }, [createRestaurantMutation]);
 
-  const fetchDashboardData = async () => {
-    if (!selectedRestaurant) return;
-
-    try {
-      setRefreshing(true);
-      const { startDate, endDate } = getDateRange(dateRange);
-      console.log('Fetching dashboard data for restaurant:', selectedRestaurant, 'from', startDate, 'to', endDate);
-
-      const analyticsData = await dashboardService.getAnalytics(
-        selectedRestaurant,
-        startDate,
-        endDate
-      );
-
-      console.log('Received analytics data:', analyticsData);
-
-      if (analyticsData) {
-        // Transform sales_by_category from object to array format
-        let salesByCategory = analyticsData.sales_by_category;
-        if (salesByCategory && typeof salesByCategory === 'object' && !Array.isArray(salesByCategory)) {
-          salesByCategory = Object.entries(salesByCategory).map(([category, revenue]) => ({
-            category,
-            total_revenue: typeof revenue === 'object' ? revenue.total_revenue || revenue : revenue
-          }));
-        }
-        
-        // Transform sales_by_hour from object to array format
-        let salesByHour = analyticsData.sales_by_hour;
-        if (salesByHour && typeof salesByHour === 'object' && !Array.isArray(salesByHour)) {
-          salesByHour = Object.entries(salesByHour).map(([hour, values]) => {
-            const hourNum = parseInt(hour, 10);
-            if (typeof values === 'object' && values !== null) {
-              return {
-                hour: hourNum,
-                total_revenue: values.total_revenue || values.revenue || 0,
-                transaction_count: values.transaction_count || values.transactions || 0
-              };
-            } else {
-              return {
-                hour: hourNum,
-                total_revenue: values || 0,
-                transaction_count: 0
-              };
-            }
-          });
-        }
-        
-        // Set the transformed data
-        setDashboardData({
-          ...analyticsData,
-          sales_by_category: salesByCategory,
-          sales_by_hour: salesByHour
-        });
-        
-        setAnomalies(analyticsData.anomalies || []);
-        
-        if (analyticsData.summary.total_transactions > 0) {
-          toast.success('Dashboard data refreshed');
-        } else {
-          toast('No sales data found. Upload a CSV file to see analytics.', {
-            icon: 'ℹ️',
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      setDashboardData({
-        summary: { total_revenue: 0, total_transactions: 0, avg_transaction_value: 0 },
-        daily_sales: [],
-        top_items: [],
-        sales_by_category: [],
-        sales_by_hour: [],
-        sales_by_payment_method: {},
-        sales_by_day_of_week: {},
-        anomalies: [],
-        insights: ["Unable to load analytics. Please try again."]
-      });
-      toast.error('Failed to fetch dashboard data');
-    } finally {
-      setRefreshing(false);
+  const handleRefresh = useCallback(() => {
+    if (selectedRestaurant) {
+      refetchAnalytics();
+      toast.success('Refreshing data...');
     }
-  };
+  }, [selectedRestaurant, refetchAnalytics]);
 
-  const handleRefresh = () => {
-    fetchDashboardData();
-  };
-
-  const handleDateRangeChange = (range) => {
+  const handleDateRangeChange = useCallback((range) => {
     setDateRange(range);
-  };
+  }, []);
 
-  const handleExport = () => {
-    toast.success('Exporting dashboard data...');
-  };
+  const handleExport = useCallback(() => {
+    const dataStr = JSON.stringify(dashboardData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dashboard-export-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Dashboard data exported');
+  }, [dashboardData]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await logout();
     navigate('/login');
-  };
+  }, [logout, navigate]);
 
   // CSV Upload handlers
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
+  const handleFileSelect = useCallback(async (event) => {
+    const file = event.target.files?.[0];
     if (file && file.type === 'text/csv') {
-      console.log('File selected:', file.name);
       setCsvFile(file);
       setUploadModalOpen(true);
-      previewCSVColumns(file);
-    } else {
-      toast.error('Please select a valid CSV file');
-    }
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-    const file = event.dataTransfer.files[0];
-    if (file && file.type === 'text/csv') {
-      console.log('File dropped:', file.name);
-      setCsvFile(file);
-      setUploadModalOpen(true);
-      previewCSVColumns(file);
-    } else {
-      toast.error('Please select a valid CSV file');
-    }
-  };
-
-  const handleDragOver = (event) => {
-    event.preventDefault();
-  };
-
-  const previewCSVColumns = async (file) => {
-    try {
-      console.log('Previewing CSV columns for file:', file.name);
-      const response = await dashboardService.previewCSVColumns(file);
       
-      console.log('CSV preview response:', response);
-      
-      // Ensure we have valid data
-      if (response && response.columns) {
-        setCsvColumns(response.columns);
-
-        // Use the suggested mapping from the backend if available
-        if (response.suggested_mapping) {
-          setColumnMapping(response.suggested_mapping);
-        } else {
-          // Initialize default mapping (first column to date, second to price, etc.)
-          const defaultMapping = {};
-          if (response.columns.length >= 1) {
-            defaultMapping[response.columns[0]] = 'date';
-            if (response.columns.length >= 2) {
-              // Try to map the second column to price
-              const secondCol = response.columns[1].toLowerCase();
-              if (secondCol.includes('price') || secondCol.includes('cost') || secondCol.includes('amount')) {
-                defaultMapping[response.columns[1]] = 'price';
-              } else {
-                defaultMapping[response.columns[1]] = 'price';
-              }
-              if (response.columns.length >= 3) {
-                // Try to map the third column to quantity
-                const thirdCol = response.columns[2].toLowerCase();
-                if (thirdCol.includes('quantity') || thirdCol.includes('qty') || thirdCol.includes('count') || thirdCol.includes('number')) {
-                  defaultMapping[response.columns[2]] = 'quantity';
-                }
-              }
-            }
-          }
-          setColumnMapping(defaultMapping);
+      try {
+        const response = await previewCSVMutation.mutateAsync(file);
+        if (response?.columns) {
+          setCsvColumns(response.columns);
+          setColumnMapping(response.suggested_mapping || {});
         }
-      } else {
-        console.error('Invalid CSV preview response:', response);
-        toast.error('Invalid CSV preview response');
+      } catch (error) {
+        console.error('Error previewing CSV:', error);
       }
-    } catch (error) {
-      console.error('Error previewing CSV columns:', error);
-      toast.error('Failed to preview CSV columns');
+    } else {
+      toast.error('Please select a valid CSV file');
     }
-  };
+  }, [previewCSVMutation]);
 
-  const handleColumnMappingChange = (column, field) => {
+  const handleDrop = useCallback(async (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (file && file.type === 'text/csv') {
+      setCsvFile(file);
+      setUploadModalOpen(true);
+      
+      try {
+        const response = await previewCSVMutation.mutateAsync(file);
+        if (response?.columns) {
+          setCsvColumns(response.columns);
+          setColumnMapping(response.suggested_mapping || {});
+        }
+      } catch (error) {
+        console.error('Error previewing CSV:', error);
+      }
+    } else {
+      toast.error('Please select a valid CSV file');
+    }
+  }, [previewCSVMutation]);
+
+  const handleDragOver = useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
+  const handleColumnMappingChange = useCallback((column, field) => {
     setColumnMapping((prev) => ({
       ...prev,
       [column]: field,
     }));
-  };
+  }, []);
 
-  // Validate required fields - only date is required now
-  const validateRequiredFields = () => {
+  const validateRequiredFields = useCallback(() => {
     if (!csvColumns.length) return false;
-    
-    // Only date is required now
-    const hasDate = Object.values(columnMapping).includes('date');
-    
-    return hasDate;
-  };
+    return Object.values(columnMapping).includes('date');
+  }, [csvColumns, columnMapping]);
 
-  const handleUploadCSV = async () => {
+  const handleUploadCSV = useCallback(async () => {
     if (!csvFile || !selectedRestaurant) return;
 
-    // Validate required fields
     if (!validateRequiredFields()) {
       toast.error('Please map the Date field (required)');
       return;
     }
 
+    const filteredMapping = {};
+    Object.entries(columnMapping).forEach(([column, field]) => {
+      if (field) {
+        filteredMapping[column] = field;
+      }
+    });
+
     try {
-      setUploading(true);
-      console.log('Uploading CSV file...');
-      
-      // Filter out unmapped columns
-      const filteredMapping = {};
-      Object.entries(columnMapping).forEach(([column, field]) => {
-        if (field) {  // Only include mapped columns
-          filteredMapping[column] = field;
-        }
+      await uploadCSVMutation.mutateAsync({
+        file: csvFile,
+        restaurantId: selectedRestaurant,
+        columnsMapping: filteredMapping
       });
       
-      console.log('Filtered column mapping:', filteredMapping);
-      
-      await dashboardService.uploadCSV(csvFile, selectedRestaurant, filteredMapping);
-      toast.success('CSV uploaded successfully');
       setUploadModalOpen(false);
       setCsvFile(null);
       setCsvColumns([]);
       setColumnMapping({});
-
       setDateRange('all');
-      
-      // Refresh dashboard data after upload with a small delay to ensure data is processed
-      setTimeout(() => {
-        fetchDashboardData();
-      }, 1000);
     } catch (error) {
       console.error('Error uploading CSV:', error);
-      toast.error('Failed to upload CSV');
-    } finally {
-      setUploading(false);
     }
-  };
+  }, [csvFile, selectedRestaurant, columnMapping, validateRequiredFields, uploadCSVMutation]);
 
-  const calculateRevenueChange = () => {
-    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 2) return 0;
+  const closeUploadModal = useCallback(() => {
+    setUploadModalOpen(false);
+    setCsvFile(null);
+    setCsvColumns([]);
+    setColumnMapping({});
+  }, []);
+
+  // Memoized calculations
+  const calculateRevenueChange = useMemo(() => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 14) return 0;
     
-    const currentPeriod = dashboardData.daily_sales.slice(-7);
-    const previousPeriod = dashboardData.daily_sales.slice(-14, -7); 
-    
-    if (previousPeriod.length === 0) return 0;
+    const currentPeriod = dailySales.slice(-7);
+    const previousPeriod = dailySales.slice(-14, -7);
     
     const currentRevenue = currentPeriod.reduce((sum, day) => sum + (day.total_amount || 0), 0);
     const previousRevenue = previousPeriod.reduce((sum, day) => sum + (day.total_amount || 0), 0);
     
     return previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
-  };
+  }, [dashboardData.daily_sales]);
 
-  const calculateTransactionsChange = () => {
-    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 2) return 0;
+  const calculateTransactionsChange = useMemo(() => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 14) return 0;
     
-    const currentPeriod = dashboardData.daily_sales.slice(-7);
-    const previousPeriod = dashboardData.daily_sales.slice(-14, -7);
-    
-    if (previousPeriod.length === 0) return 0;
+    const currentPeriod = dailySales.slice(-7);
+    const previousPeriod = dailySales.slice(-14, -7);
     
     const currentTransactions = currentPeriod.reduce((sum, day) => sum + (day.transactions || 0), 0);
     const previousTransactions = previousPeriod.reduce((sum, day) => sum + (day.transactions || 0), 0);
     
     return previousTransactions > 0 ? ((currentTransactions - previousTransactions) / previousTransactions) * 100 : 0;
-  };
+  }, [dashboardData.daily_sales]);
 
-  const calculateAvgOrderChange = () => {
-    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 2) return 0;
+  const calculateAvgOrderChange = useMemo(() => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 14) return 0;
     
-    const currentPeriod = dashboardData.daily_sales.slice(-7);
-    const previousPeriod = dashboardData.daily_sales.slice(-14, -7);
+    const currentPeriod = dailySales.slice(-7);
+    const previousPeriod = dailySales.slice(-14, -7);
     
-    if (previousPeriod.length === 0) return 0;
+    const calcAvg = (period) => {
+      const total = period.reduce((sum, day) => {
+        return sum + (day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0);
+      }, 0);
+      return period.length > 0 ? total / period.length : 0;
+    };
     
-    const currentAvg = currentPeriod.reduce((sum, day) => {
-      const avg = day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0;
-      return sum + avg;
-    }, 0) / currentPeriod.length;
-    
-    const previousAvg = previousPeriod.reduce((sum, day) => {
-      const avg = day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0;
-      return sum + avg;
-    }, 0) / previousPeriod.length;
+    const currentAvg = calcAvg(currentPeriod);
+    const previousAvg = calcAvg(previousPeriod);
     
     return previousAvg > 0 ? ((currentAvg - previousAvg) / previousAvg) * 100 : 0;
-  };
+  }, [dashboardData.daily_sales]);
 
-  const calculateTopItemChange = () => {
-    // This would require historical data for top items
-    // For now, return a random value or 0
-    return Math.random() * 20 - 10; // Random between -10 and 10
-  };
-
-  const getChangeType = (change) => {
+  const getChangeType = useCallback((change) => {
     return change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral';
-  };
+  }, []);
 
-  const generateSparklineData = (type) => {
-    if (!dashboardData.daily_sales || dashboardData.daily_sales.length < 10) return [];
+  const generateSparklineData = useCallback((type) => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 10) return [];
     
-    return dashboardData.daily_sales.slice(-10).map(day => {
+    return dailySales.slice(-10).map(day => {
       switch (type) {
         case 'revenue':
           return day.total_amount || 0;
@@ -474,20 +383,19 @@ const DashboardPage = () => {
           return day.transactions || 0;
         case 'avg_order':
           return day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0;
-        case 'top_item':
-          return Math.random() * 100;
         default:
           return 0;
       }
     });
-  };
+  }, [dashboardData.daily_sales]);
 
-  const metricCards = [
+  // Memoized metric cards
+  const metricCards = useMemo(() => [
     {
       title: 'Total Revenue',
       value: dashboardData.summary?.total_revenue || 0,
-      change: calculateRevenueChange(),
-      changeType: getChangeType(calculateRevenueChange()),
+      change: calculateRevenueChange,
+      changeType: getChangeType(calculateRevenueChange),
       icon: FiPlus,
       color: 'primary',
       sparklineData: generateSparklineData('revenue'),
@@ -496,8 +404,8 @@ const DashboardPage = () => {
     {
       title: 'Transactions',
       value: dashboardData.summary?.total_transactions || 0,
-      change: calculateTransactionsChange(),
-      changeType: getChangeType(calculateTransactionsChange()),
+      change: calculateTransactionsChange,
+      changeType: getChangeType(calculateTransactionsChange),
       icon: FiDownload,
       color: 'secondary',
       sparklineData: generateSparklineData('transactions'),
@@ -506,8 +414,8 @@ const DashboardPage = () => {
     {
       title: 'Avg. Order Value',
       value: dashboardData.summary?.avg_transaction_value || 0,
-      change: calculateAvgOrderChange(),
-      changeType: getChangeType(calculateAvgOrderChange()),
+      change: calculateAvgOrderChange,
+      changeType: getChangeType(calculateAvgOrderChange),
       icon: FiCalendar,
       color: 'tertiary',
       sparklineData: generateSparklineData('avg_order'),
@@ -516,22 +424,43 @@ const DashboardPage = () => {
     {
       title: 'Top Item Sales',
       value: dashboardData.top_items?.[0]?.total_quantity || 0,
-      change: calculateTopItemChange(),
-      changeType: getChangeType(calculateTopItemChange()),
+      change: 0,
+      changeType: 'neutral',
       icon: FiRefreshCw,
       color: 'success',
-      sparklineData: generateSparklineData('top_item'),
+      sparklineData: [],
       comparisonText: 'vs last period',
     },
-  ];
+  ], [dashboardData, calculateRevenueChange, calculateTransactionsChange, calculateAvgOrderChange, getChangeType, generateSparklineData]);
 
-  // Add a loading state to prevent rendering when data is not ready
-  if (loading && restaurants.length === 0) {
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { duration: 0.5 },
+    },
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.5 },
+    },
+  };
+
+  // Loading state
+  const isLoading = restaurantsLoading || (analyticsLoading && !analyticsData);
+  const isRefreshing = analyticsRefreshing;
+
+  if (isLoading && restaurants.length === 0) {
     return (
       <div className={styles.dashboardPage}>
         <div className={styles.loadingContainer}>
           <div className={styles.spinner}></div>
-          <p>Loading restaurants...</p>
+          <p>Loading dashboard...</p>
         </div>
       </div>
     );
@@ -543,10 +472,9 @@ const DashboardPage = () => {
         <div className={styles.headerLeft}>
           <h1 className={styles.pageTitle}>Restaurant Analytics</h1>
           <p className={styles.pageSubtitle}>
-            Welcome back, {user?.username || 'User'}! Here's what's happening with your restaurant today.
+            Welcome back, {user?.data?.username || user?.username || 'User'}! Here's what's happening with your restaurant today.
           </p>
 
-          {/* Restaurant Selector */}
           <div className={styles.restaurantSelector}>
             <label htmlFor="restaurant-select" className={styles.selectorLabel}>
               Restaurant:
@@ -556,9 +484,9 @@ const DashboardPage = () => {
               className={styles.restaurantSelect}
               value={selectedRestaurant || ''}
               onChange={(e) => setSelectedRestaurant(Number(e.target.value))}
-              disabled={loading}
+              disabled={restaurantsLoading}
             >
-              {restaurants && restaurants.map((restaurant) => (
+              {restaurants.map((restaurant) => (
                 <option key={restaurant.id} value={restaurant.id}>
                   {restaurant.name}
                 </option>
@@ -568,7 +496,6 @@ const DashboardPage = () => {
         </div>
 
         <div className={styles.headerRight}>
-          {/* Date Range Selector */}
           <div className={styles.dateRangeSelector}>
             <select
               value={dateRange}
@@ -583,36 +510,37 @@ const DashboardPage = () => {
             </select>
           </div>
 
-          {/* Action Buttons */}
           <div className={styles.headerActions}>
             <button
               className={styles.uploadButton}
               onClick={() => setUploadModalOpen(true)}
               title="Upload CSV"
+              type="button"
             >
               <FiUpload size={18} />
-              Upload
+              <span>Upload</span>
             </button>
 
             <button
               className={styles.refreshButton}
               onClick={handleRefresh}
-              disabled={refreshing}
+              disabled={isRefreshing}
               title="Refresh data"
+              type="button"
             >
-              <FiRefreshCw size={18} className={refreshing ? styles.spinning : ''} />
-              Refresh
+              <FiRefreshCw size={18} className={isRefreshing ? styles.spinning : ''} />
+              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
             </button>
 
             <button
               className={styles.exportButton}
               onClick={handleExport}
               title="Export data"
+              type="button"
             >
               <FiDownload size={18} />
-              Export
+              <span>Export</span>
             </button>
-
           </div>
 
           {/* Notifications */}
@@ -620,11 +548,12 @@ const DashboardPage = () => {
             <button
               className={styles.notificationButton}
               onClick={() => setNotificationMenuOpen(!notificationMenuOpen)}
+              type="button"
             >
               <FiBell size={20} />
-              {anomalies.filter((a) => !a.acknowledged).length > 0 && (
+              {unreadCount > 0 && (
                 <span className={styles.notificationBadge}>
-                  {anomalies.filter((a) => !a.acknowledged).length}
+                  {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
             </button>
@@ -633,63 +562,86 @@ const DashboardPage = () => {
               {notificationMenuOpen && (
                 <motion.div
                   className={styles.notificationMenu}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
                 >
                   <div className={styles.notificationHeader}>
-                    <h3>Notifications</h3>
-                    <button 
-                      className={styles.markAllRead} 
-                      onClick={() => {
-                        const updatedAnomalies = anomalies.map(anomaly => ({
-                          ...anomaly,
-                          acknowledged: true
-                        }));
-                        setAnomalies(updatedAnomalies);
-                        toast.success('All notifications marked as read');
-                      }}
-                    >
-                      Mark all as read
-                    </button>
+                    <h3>
+                      Notifications
+                      {unreadCount > 0 && (
+                        <span className={styles.unreadBadge}>{unreadCount} new</span>
+                      )}
+                    </h3>
+                    {notifications.length > 0 && unreadCount > 0 && (
+                      <button 
+                        className={styles.markAllRead}
+                        onClick={handleMarkAllAsRead}
+                        type="button"
+                      >
+                        <FiCheck size={14} />
+                        Mark all as read
+                      </button>
+                    )}
                   </div>
+                  
                   <div className={styles.notificationList}>
-                    {anomalies.length > 0 ? (
-                      anomalies.map((anomaly) => (
-                        <div key={anomaly.id || anomaly.date} className={styles.notificationItem}>
-                          <div className={`${styles.notificationDot} ${styles[anomaly.severity]}`} />
+                    {notifications.length > 0 ? (
+                      notifications.slice(0, 10).map((notification) => (
+                        <div 
+                          key={notification.id} 
+                          className={`${styles.notificationItem} ${notification.acknowledged ? styles.read : styles.unread}`}
+                          onClick={() => handleMarkAsRead(notification.id)}
+                        >
+                          <div className={`${styles.notificationDot} ${styles[notification.severity || 'info']}`} />
                           <div className={styles.notificationContent}>
-                            <h4>{anomaly.title}</h4>
-                            <p>{anomaly.description}</p>
-                            <span className={styles.notificationTime}>{anomaly.time}</span>
+                            <h4>{notification.title}</h4>
+                            <p>{notification.description}</p>
+                            <span className={styles.notificationTime}>
+                              {notification.time}
+                            </span>
                           </div>
+                          {notification.acknowledged && (
+                            <div className={styles.readIndicator}>
+                              <FiCheck size={14} />
+                            </div>
+                          )}
                         </div>
                       ))
                     ) : (
                       <div className={styles.noNotifications}>
-                        No new notifications
+                        <FiBell size={32} />
+                        <p>No notifications</p>
+                        <span>You're all caught up!</span>
                       </div>
                     )}
                   </div>
+                  
+                  {notifications.length > 0 && (
+                    <div className={styles.notificationFooter}>
+                      <span className={styles.notificationCount}>
+                        {notifications.length} total notification{notifications.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
+          {/* User Menu */}
           <div className={styles.userContainer}>
             <button
               className={styles.userButton}
               onClick={() => setUserMenuOpen(!userMenuOpen)}
+              type="button"
             >
               <div className={styles.userAvatar}>
                 <FiUser size={18} />
               </div>
               <span className={styles.userName}>
-                {user?.username || localStorage.getItem('userData') ? 
-                  JSON.parse(localStorage.getItem('userData') || '{}').username : 
-                  'User'
-                }
+                {user?.data?.username || user?.username || 'User'}
               </span>
             </button>
             
@@ -697,9 +649,9 @@ const DashboardPage = () => {
               {userMenuOpen && (
                 <motion.div
                   className={styles.userMenu}
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
                 >
                   <button 
@@ -708,12 +660,17 @@ const DashboardPage = () => {
                       navigate('/profile');
                       setUserMenuOpen(false);
                     }}
+                    type="button"
                   >
                     <FiUser size={16} />
                     Profile
                   </button>
                   <div className={styles.menuDivider} />
-                  <button className={styles.menuItem} onClick={handleLogout}>
+                  <button 
+                    className={styles.menuItem} 
+                    onClick={handleLogout}
+                    type="button"
+                  >
                     <FiLogOut size={16} />
                     Logout
                   </button>
@@ -731,24 +688,15 @@ const DashboardPage = () => {
           animate="visible"
         >
           {/* Insights Panel */}
-          {dashboardData && (dashboardData.insights?.length > 0 || dashboardData.anomalies?.length > 0) && (
+          {(dashboardData.insights?.length > 0 || dashboardData.anomalies?.length > 0) && (
             <motion.div variants={itemVariants}>
               <InsightsPanel
                 insights={dashboardData.insights || []}
                 anomalies={dashboardData.anomalies || []}
-                loading={loading}
-                onRefresh={fetchDashboardData}
+                loading={isLoading}
+                onRefresh={handleRefresh}
               />
             </motion.div>
-          )}
-
-          {/* Anomaly Alerts - Only render if we have valid data */}
-          {dashboardData && Array.isArray(dashboardData.anomalies) && dashboardData.anomalies.length > 0 && (
-            <AnomalyAlert 
-              anomalies={dashboardData.anomalies} 
-              maxVisible={3} 
-              autoExpand={false} 
-            />
           )}
 
           {/* Metrics Grid */}
@@ -757,7 +705,7 @@ const DashboardPage = () => {
               <MetricCard
                 key={index}
                 {...metric}
-                loading={loading}
+                loading={isLoading}
                 onClick={() => console.log(`View ${metric.title} details`)}
               />
             ))}
@@ -770,38 +718,63 @@ const DashboardPage = () => {
                 data={dashboardData.daily_sales || []}
                 title="Revenue Trends"
                 height={350}
-                loading={loading}
-                compareData={dateRange === '30d' ? dashboardData.previous_period_sales : null}
+                loading={isLoading}
                 onDateRangeChange={handleDateRangeChange}
-                onFilterClick={() => console.log('Filter clicked')}
               />
             </div>
 
             <div className={styles.sideChart}>
               <TopItems
                 items={dashboardData.top_items || []}
-                loading={loading}
-                onViewAllItems={() => console.log('View all items clicked')}
+                loading={isLoading}
               />
             </div>
           </div>
 
-          {/* Bottom Charts Grid */}
-          <div className={styles.bottomCharts}>
-            <div className={styles.bottomChart}>
-              <SalesByCategory
-                data={dashboardData.sales_by_category || []}
-                loading={loading}
-                chartType="doughnut"
+          {/* Analytics Row 1 */}
+          <div className={styles.analyticsRow}>
+            <div className={styles.analyticsChart}>
+              <SalesByPurchaseType
+                data={dashboardData.sales_by_purchase_type || {}}
+                loading={isLoading}
+                title="Sales by Channel"
               />
             </div>
 
-            <div className={styles.bottomChart}>
-              <SalesByHour
-                data={dashboardData.sales_by_hour || []}
-                loading={loading}
+            <div className={styles.analyticsChart}>
+              <SalesByPaymentMethod
+                data={dashboardData.sales_by_payment_method || {}}
+                loading={isLoading}
+                title="Payment Methods"
               />
             </div>
+          </div>
+
+          {/* Analytics Row 2 */}
+          <div className={styles.analyticsRow}>
+            <div className={styles.analyticsChart}>
+              <ManagerPerformance
+                data={dashboardData.sales_by_manager || {}}
+                loading={isLoading}
+                title="Manager Performance"
+              />
+            </div>
+
+            <div className={styles.analyticsChart}>
+              <SalesByCity
+                data={dashboardData.sales_by_city || {}}
+                loading={isLoading}
+                title="Sales by Location"
+              />
+            </div>
+          </div>
+
+          {/* Sales by Hour */}
+          <div className={styles.fullWidthChart}>
+            <SalesByHour
+              data={dashboardData.sales_by_hour || []}
+              loading={isLoading}
+            />
           </div>
         </motion.div>
       </main>
@@ -814,6 +787,7 @@ const DashboardPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            onClick={closeUploadModal}
           >
             <motion.div
               className={styles.modalContent}
@@ -821,12 +795,14 @@ const DashboardPage = () => {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.3 }}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className={styles.modalHeader}>
                 <h2>Upload Sales Data</h2>
                 <button
                   className={styles.closeButton}
-                  onClick={() => setUploadModalOpen(false)}
+                  onClick={closeUploadModal}
+                  type="button"
                 >
                   ×
                 </button>
@@ -849,20 +825,29 @@ const DashboardPage = () => {
                           <option value="">-- Ignore Column --</option>
                           <optgroup label="Required Fields">
                             <option value="date">Date *</option>
-                            <option value="time">Time (optional, for hourly analysis)</option>
+                            <option value="time">Time</option>
                           </optgroup>
                           <optgroup label="Recommended Fields">
-                            <option value="price">Price (recommended)</option>
-                            <option value="quantity">Quantity (recommended)</option>
+                            <option value="price">Price</option>
+                            <option value="quantity">Quantity</option>
                           </optgroup>
-                          <optgroup label="Optional Fields">
-                            <option value="total_amount">Total Amount (will be calculated if not provided)</option>
+                          <optgroup label="Transaction Details">
+                            <option value="total_amount">Total Amount</option>
                             <option value="item_name">Item Name</option>
                             <option value="category">Category</option>
                             <option value="transaction_id">Transaction ID</option>
+                          </optgroup>
+                          <optgroup label="Sales Channels">
+                            <option value="purchase_type">Purchase Type</option>
                             <option value="payment_method">Payment Method</option>
-                            <option value="customer_id">Customer ID</option>
+                          </optgroup>
+                          <optgroup label="Location & Staff">
+                            <option value="manager">Manager</option>
+                            <option value="city">City/Location</option>
                             <option value="staff_id">Staff ID</option>
+                          </optgroup>
+                          <optgroup label="Other">
+                            <option value="customer_id">Customer ID</option>
                             <option value="notes">Notes</option>
                           </optgroup>
                         </select>
@@ -871,22 +856,25 @@ const DashboardPage = () => {
                   </div>
 
                   <div className={styles.mappingNote}>
-                    <p>* Only the Date field is required. Total Amount will be calculated from Price × Quantity if not provided.</p>
+                    <p>* Only the Date field is required.</p>
+                    <p>💡 Map Purchase Type, Manager, and City for detailed analytics.</p>
                   </div>
 
                   <div className={styles.modalActions}>
                     <button
                       className={styles.cancelButton}
-                      onClick={() => setUploadModalOpen(false)}
+                      onClick={closeUploadModal}
+                      type="button"
                     >
                       Cancel
                     </button>
                     <button
                       className={styles.uploadButton}
                       onClick={handleUploadCSV}
-                      disabled={uploading || !validateRequiredFields()}
+                      disabled={uploadCSVMutation.isLoading || !validateRequiredFields()}
+                      type="button"
                     >
-                      {uploading ? 'Uploading...' : 'Upload'}
+                      {uploadCSVMutation.isLoading ? 'Uploading...' : 'Upload'}
                     </button>
                   </div>
                 </div>
@@ -896,7 +884,7 @@ const DashboardPage = () => {
                     className={styles.fileDropArea}
                     onDrop={handleDrop}
                     onDragOver={handleDragOver}
-                    onClick={() => fileInputRef.current.click()}
+                    onClick={() => fileInputRef.current?.click()}
                   >
                     <FiUpload size={48} />
                     <h3>Drop your CSV file here or click to browse</h3>

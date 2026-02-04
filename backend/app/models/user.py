@@ -1,7 +1,9 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text
+# models/user.py
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..core.database import Base
+from datetime import datetime
 
 class User(Base):
     __tablename__ = "users"
@@ -11,8 +13,6 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
@@ -21,6 +21,9 @@ class User(Base):
     location = Column(String, nullable=True)
     website = Column(String, nullable=True)
     job_title = Column(String, nullable=True)
+    profile_image = Column(String, nullable=True)  
     
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    restaurants = relationship("Restaurant", back_populates="owner")
+    restaurants = relationship("Restaurant", back_populates="owner", cascade="all, delete-orphan")

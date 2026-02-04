@@ -1,3 +1,4 @@
+# schemas/sales.py
 from pydantic import BaseModel
 from datetime import datetime, time
 from typing import Optional, List, Dict, Any, Union
@@ -15,6 +16,9 @@ class SalesDataBase(BaseModel):
     customer_id: Optional[str] = None
     staff_id: Optional[str] = None
     notes: Optional[str] = None
+    purchase_type: Optional[str] = None
+    manager: Optional[str] = None
+    city: Optional[str] = None
 
 class SalesDataCreate(SalesDataBase):
     restaurant_id: int
@@ -59,9 +63,12 @@ class AnalyticsResponse(BaseModel):
     summary: Dict[str, Any]
     daily_sales: List[Dict[str, Any]]
     top_items: List[Dict[str, Any]]
-    sales_by_category: Union[Dict[str, float], List[Dict[str, Any]]]  # Allow both formats
-    sales_by_payment_method: Dict[str, float]
-    sales_by_day_of_week: Dict[str, float]
-    sales_by_hour: Union[Dict[str, Any], List[Dict[str, Any]]]  # Allow both formats
+    sales_by_category: Union[Dict[str, float], List[Dict[str, Any]]]
+    sales_by_payment_method: Dict[str, Any]
+    sales_by_day_of_week: Dict[str, Any]
+    sales_by_hour: Union[Dict[str, Any], List[Dict[str, Any]]]
+    sales_by_purchase_type: Dict[str, Any]
+    sales_by_manager: Dict[str, Any]
+    sales_by_city: Dict[str, Any]
     anomalies: List[Dict[str, Any]]
     insights: List[str]

@@ -1,4 +1,3 @@
-// components/dashboard/InsightsPanel/InsightsPanel.jsx
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiTrendingUp, FiAlertTriangle, FiChevronDown, FiChevronUp, FiRefreshCw } from 'react-icons/fi';
@@ -11,7 +10,7 @@ const InsightsPanel = ({
   onRefresh 
 }) => {
   const [expanded, setExpanded] = useState(true);
-  const [activeTab, setActiveTab] = useState('insights'); // 'insights' or 'anomalies'
+  const [activeTab, setActiveTab] = useState('insights'); 
 
   const handleRefresh = () => {
     if (onRefresh) onRefresh();

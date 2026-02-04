@@ -186,6 +186,7 @@ const SalesByHour = ({ data = [], loading = false }) => {
                   initial={{ opacity: 0, scaleY: 0 }}
                   animate={{ opacity: 1, scaleY: 1 }}
                   transition={{ delay: hourData.hour * 0.02, duration: 0.5 }}
+                  style={{ transformOrigin: 'bottom' }}
                   whileHover={{ y: -4 }}
                 >
                   <div className={styles.hourLabel}>{hourData.hour}</div>

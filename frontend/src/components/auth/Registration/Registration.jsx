@@ -145,6 +145,8 @@ const Registration = ({
       
       // Navigate to login page with success message
       if (onSuccess) {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
         onSuccess();
       }
       

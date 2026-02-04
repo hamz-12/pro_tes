@@ -1,3 +1,4 @@
+# services/sales.py
 import pandas as pd
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
@@ -56,10 +57,11 @@ def upload_csv(
         # Rename columns based on mapping
         mapped_df = df.rename(columns=columns_mapping)
         
-        # Filter to only include columns we care about
+        # Filter to only include columns we care about - UPDATED WITH NEW COLUMNS
         valid_columns = [
-            'date', 'time','total_amount', 'quantity', 'item_name', 'category',
-            'transaction_id', 'price', 'payment_method', 'customer_id', 'staff_id', 'notes'
+            'date', 'time', 'total_amount', 'quantity', 'item_name', 'category',
+            'transaction_id', 'price', 'payment_method', 'customer_id', 'staff_id', 'notes',
+            'purchase_type', 'manager', 'city'  # NEW COLUMNS
         ]
         
         # Create a new dataframe with only the valid columns
@@ -72,15 +74,14 @@ def upload_csv(
         # Convert date column to datetime with flexible parsing
         if 'date' in processed_df.columns:
             try:
-                # Try common date formats in order of preference
                 date_formats = [
-                    "%m/%d/%Y",    # MM/DD/YYYY
-                    "%d/%m/%Y",    # DD/MM/YYYY
-                    "%Y-%m-%d",    # YYYY-MM-DD
-                    "%m-%d-%Y",    # MM-DD-YYYY
-                    "%d-%m-%Y",    # DD-MM-YYYY
-                    "%m/%d/%y",    # MM/DD/YY
-                    "%d/%m/%y",    # DD/MM/YY
+                    "%m/%d/%Y",
+                    "%d/%m/%Y",
+                    "%Y-%m-%d",
+                    "%m-%d-%Y",
+                    "%d-%m-%Y",
+                    "%m/%d/%y",
+                    "%d/%m/%y",
                 ]
                 
                 for fmt in date_formats:
@@ -96,15 +97,15 @@ def upload_csv(
                     
             except Exception as e:
                 print(f"Error parsing dates: {str(e)}")
-                raise HTTPException(status_code=400, detail=f"Error parsing dates: {str(e)}. Please ensure your date column contains valid dates.")
+                raise Exception(f"Error parsing dates: {str(e)}. Please ensure your date column contains valid dates.")
         
         if 'time' in processed_df.columns:
             try:
                 time_formats = [
-                    "%H:%M:%S",    # HH:MM:SS
-                    "%H:%M",       # HH:MM
-                    "%I:%M %p",    # HH:MM AM/PM
-                    "%I:%M:%S %p", # HH:MM:SS AM/PM
+                    "%H:%M:%S",
+                    "%H:%M",
+                    "%I:%M %p",
+                    "%I:%M:%S %p",
                 ]
                 
                 for fmt in time_formats:
@@ -137,6 +138,30 @@ def upload_csv(
         elif 'total_amount' in processed_df.columns:
             processed_df['total_amount'] = pd.to_numeric(processed_df['total_amount'], errors='coerce')
         
+        # Clean and standardize new columns
+        if 'purchase_type' in processed_df.columns:
+            processed_df['purchase_type'] = processed_df['purchase_type'].fillna('Unknown').astype(str).str.strip()
+            # Standardize common variations
+            purchase_type_mapping = {
+                'drive-thru': 'Drive-thru',
+                'drive thru': 'Drive-thru',
+                'drivethru': 'Drive-thru',
+                'online': 'Online',
+                'in-store': 'In-store',
+                'in store': 'In-store',
+                'instore': 'In-store',
+                'store': 'In-store',
+            }
+            processed_df['purchase_type'] = processed_df['purchase_type'].str.lower().map(
+                lambda x: purchase_type_mapping.get(x, x.title())
+            )
+        
+        if 'manager' in processed_df.columns:
+            processed_df['manager'] = processed_df['manager'].fillna('Unknown').astype(str).str.strip().str.title()
+        
+        if 'city' in processed_df.columns:
+            processed_df['city'] = processed_df['city'].fillna('Unknown').astype(str).str.strip().str.title()
+        
         # Create sales records
         sales_records = []
         for _, row in processed_df.iterrows():
@@ -149,13 +174,10 @@ def upload_csv(
             total_amount = row.get('total_amount')
             quantity = row.get('quantity', 1)
             
-            # If total_amount is missing but price is available, use price as total_amount
             if pd.isna(total_amount) and not pd.isna(price):
                 total_amount = price
-            # If price is missing but total_amount is available, use total_amount as price
             elif pd.isna(price) and not pd.isna(total_amount):
                 price = total_amount
-            # If both are missing, skip this row
             elif pd.isna(price) and pd.isna(total_amount):
                 continue
                 
@@ -165,24 +187,31 @@ def upload_csv(
                 time=row.get('time'),
                 total_amount=total_amount,
                 quantity=int(quantity) if not pd.isna(quantity) else 1,
-                item_name=row.get('item_name', ''),
+                item_name=row.get('item_name', 'Unknown Item'),
                 category=row.get('category', ''),
                 transaction_id=row.get('transaction_id', ''),
                 price=price,
                 payment_method=row.get('payment_method', ''),
                 customer_id=row.get('customer_id', ''),
                 staff_id=row.get('staff_id', ''),
-                notes=row.get('notes', '')
+                notes=row.get('notes', ''),
+                # NEW FIELDS
+                purchase_type=row.get('purchase_type', ''),
+                manager=row.get('manager', ''),
+                city=row.get('city', '')
             )
             sales_records.append(sales_record)
         
-        # Bulk insert sales records in batches for better performance
+        # Bulk insert sales records in batches
         if sales_records:
-            batch_size = 1000  # Process in batches of 1000 records
+            batch_size = 1000
             for i in range(0, len(sales_records), batch_size):
                 batch = sales_records[i:i+batch_size]
-                db.bulk_insert_mappings(SalesData, [record.__dict__ for record in batch])
-                db.commit()  # Commit each batch
+                db.bulk_insert_mappings(SalesData, [
+                    {k: v for k, v in record.__dict__.items() if not k.startswith('_')} 
+                    for record in batch
+                ])
+                db.commit()
                 print(f"Processed batch {i//batch_size + 1}, records {i+1}-{min(i+batch_size, len(sales_records))}")
         
         # Update CSV upload status
@@ -193,15 +222,14 @@ def upload_csv(
         return csv_upload
         
     except Exception as e:
-        # Update CSV upload status to failed
         if 'csv_upload' in locals():
             csv_upload.processed = False
             csv_upload.error_message = str(e)
             db.commit()
         
         raise e
-    
-# In services/sales.py, update the get_sales_analytics function
+
+
 def get_sales_analytics(db: Session, restaurant_id: int, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
     query = db.query(SalesData).filter(SalesData.restaurant_id == restaurant_id)
     
@@ -216,25 +244,31 @@ def get_sales_analytics(db: Session, restaurant_id: int, start_date: Optional[da
     sales_data = query.all()
     print(f"Found {len(sales_data)} sales records")
     
+    # Default empty response
+    empty_response = {
+        "summary": {
+            "total_revenue": 0,
+            "total_transactions": 0,
+            "avg_transaction_value": 0
+        },
+        "daily_sales": [],
+        "top_items": [],
+        "sales_by_category": {},
+        "sales_by_payment_method": {},
+        "sales_by_day_of_week": {},
+        "sales_by_hour": {},
+        "sales_by_purchase_type": {},
+        "sales_by_manager": {},
+        "sales_by_city": {},
+        "anomalies": [],
+        "insights": ["Upload sales data to see insights and analytics"]
+    }
+    
     if not sales_data:
         print("No sales data found, returning default values")
-        return {
-            "summary": {
-                "total_revenue": 0,
-                "total_transactions": 0,
-                "avg_transaction_value": 0
-            },
-            "daily_sales": [],
-            "top_items": [],
-            "sales_by_category": {},
-            "sales_by_payment_method": {},
-            "sales_by_day_of_week": {},
-            "sales_by_hour": {},
-            "anomalies": [],
-            "insights": ["Upload sales data to see insights and analytics"]
-        }
+        return empty_response
     
-    # Convert to DataFrame for easier analysis
+    # Convert to DataFrame for easier analysis - UPDATED WITH NEW COLUMNS
     df = pd.DataFrame([{
         "date": s.date,
         "time": s.time,
@@ -243,15 +277,20 @@ def get_sales_analytics(db: Session, restaurant_id: int, start_date: Optional[da
         "quantity": s.quantity,
         "price": s.price,
         "total_amount": s.total_amount,
-        "payment_method": s.payment_method
+        "payment_method": s.payment_method,
+        "purchase_type": s.purchase_type or 'Unknown',
+        "manager": s.manager or 'Unknown',
+        "city": s.city or 'Unknown'
     } for s in sales_data])
     
     print(f"Data date range: {df['date'].min()} to {df['date'].max()}")
     
+    # Summary calculations
     total_revenue = df["total_amount"].sum()
     total_transactions = len(df)
     average_transaction_value = total_revenue / total_transactions if total_transactions > 0 else 0
     
+    # Daily sales
     df['date_only'] = df['date'].dt.date
     daily_sales = df.groupby('date_only').agg({
         'total_amount': 'sum',
@@ -261,7 +300,7 @@ def get_sales_analytics(db: Session, restaurant_id: int, start_date: Optional[da
     daily_sales['date'] = daily_sales['date'].astype(str)
     daily_sales = daily_sales.to_dict('records')
     
-    # Fix for top_items - include revenue and convert to regular Python types
+    # Top items
     top_items_df = df.groupby("item_name").agg({
         'quantity': 'sum',
         'total_amount': 'sum'
@@ -276,32 +315,43 @@ def get_sales_analytics(db: Session, restaurant_id: int, start_date: Optional[da
         for item, row in top_items_df.iterrows()
     ]
     
-    # Keep sales_by_category as a dictionary for the Pydantic model
+    # Sales by category
     sales_by_category = df.groupby("category")["total_amount"].sum().to_dict()
     
-    sales_by_payment_method = df.groupby("payment_method")["total_amount"].sum().to_dict()
+    # Sales by payment method - ENHANCED
+    payment_method_stats = df.groupby("payment_method").agg({
+        'total_amount': 'sum',
+        'date': 'count'
+    }).rename(columns={'date': 'transaction_count'})
     
+    sales_by_payment_method = {}
+    for method, row in payment_method_stats.iterrows():
+        method_name = method if method else 'Unknown'
+        sales_by_payment_method[method_name] = {
+            'total_revenue': float(row['total_amount']),
+            'transaction_count': int(row['transaction_count']),
+            'percentage': float(row['total_amount'] / total_revenue * 100) if total_revenue > 0 else 0
+        }
+    
+    # Sales by day of week
     df["day_of_week"] = df["date"].dt.day_name()
     sales_by_day_of_week = df.groupby("day_of_week")["total_amount"].sum().to_dict()
     
-    # Keep sales_by_hour as a dictionary for the Pydantic model
+    # Sales by hour
     df["hour"] = df["date"].dt.hour  
     
     if 'time' in df.columns and not df['time'].isna().all():
-        # Create a combined datetime with the time from the time column
         df['combined_datetime'] = df.apply(
             lambda row: datetime.combine(row['date'].date(), row['time']) if pd.notna(row['time']) else row['date'],
             axis=1
         )
         df["hour"] = df["combined_datetime"].dt.hour
     
-    # Group by hour and calculate both revenue and transaction count
     hourly_data = df.groupby("hour").agg({
         'total_amount': 'sum',
-        'date': 'count'  # Count of records as proxy for transactions
+        'date': 'count'
     }).rename(columns={'date': 'transactions'})
     
-    # Create dictionary for sales_by_hour
     sales_by_hour = {}
     for hour in range(24):
         if hour in hourly_data.index:
@@ -315,6 +365,89 @@ def get_sales_analytics(db: Session, restaurant_id: int, start_date: Optional[da
                 'transaction_count': 0
             }
     
+    # NEW: Sales by Purchase Type
+    purchase_type_stats = df.groupby("purchase_type").agg({
+        'total_amount': 'sum',
+        'date': 'count',
+        'quantity': 'sum'
+    }).rename(columns={'date': 'transaction_count', 'quantity': 'total_items'})
+    
+    sales_by_purchase_type = {}
+    for ptype, row in purchase_type_stats.iterrows():
+        ptype_name = ptype if ptype and ptype != '' else 'Unknown'
+        sales_by_purchase_type[ptype_name] = {
+            'total_revenue': float(row['total_amount']),
+            'transaction_count': int(row['transaction_count']),
+            'total_items': int(row['total_items']),
+            'percentage': float(row['total_amount'] / total_revenue * 100) if total_revenue > 0 else 0,
+            'avg_order_value': float(row['total_amount'] / row['transaction_count']) if row['transaction_count'] > 0 else 0
+        }
+    
+    # NEW: Sales by Manager
+    manager_stats = df.groupby("manager").agg({
+        'total_amount': 'sum',
+        'date': 'count',
+        'quantity': 'sum'
+    }).rename(columns={'date': 'transaction_count', 'quantity': 'total_items'})
+    
+    # Calculate additional manager metrics
+    sales_by_manager = {}
+    for manager, row in manager_stats.iterrows():
+        manager_name = manager if manager and manager != '' else 'Unknown'
+        manager_transactions = df[df['manager'] == manager]
+        
+        # Get manager's busiest hour
+        manager_hourly = manager_transactions.groupby(manager_transactions['date'].dt.hour)['total_amount'].sum()
+        busiest_hour = int(manager_hourly.idxmax()) if len(manager_hourly) > 0 else 0
+        
+        # Get manager's top selling item
+        manager_items = manager_transactions.groupby('item_name')['quantity'].sum()
+        top_item = manager_items.idxmax() if len(manager_items) > 0 else 'N/A'
+        
+        sales_by_manager[manager_name] = {
+            'total_revenue': float(row['total_amount']),
+            'transaction_count': int(row['transaction_count']),
+            'total_items': int(row['total_items']),
+            'percentage': float(row['total_amount'] / total_revenue * 100) if total_revenue > 0 else 0,
+            'avg_order_value': float(row['total_amount'] / row['transaction_count']) if row['transaction_count'] > 0 else 0,
+            'busiest_hour': busiest_hour,
+            'top_item': top_item
+        }
+    
+    # NEW: Sales by City
+    city_stats = df.groupby("city").agg({
+        'total_amount': 'sum',
+        'date': 'count',
+        'quantity': 'sum'
+    }).rename(columns={'date': 'transaction_count', 'quantity': 'total_items'})
+    
+    sales_by_city = {}
+    for city, row in city_stats.iterrows():
+        city_name = city if city and city != '' else 'Unknown'
+        city_transactions = df[df['city'] == city]
+        
+        # Get city's preferred payment method
+        city_payments = city_transactions.groupby('payment_method')['total_amount'].sum()
+        preferred_payment = city_payments.idxmax() if len(city_payments) > 0 else 'N/A'
+        
+        # Get city's preferred purchase type
+        city_purchase_types = city_transactions.groupby('purchase_type')['total_amount'].sum()
+        preferred_purchase_type = city_purchase_types.idxmax() if len(city_purchase_types) > 0 else 'N/A'
+        
+        sales_by_city[city_name] = {
+            'total_revenue': float(row['total_amount']),
+            'transaction_count': int(row['transaction_count']),
+            'total_items': int(row['total_items']),
+            'percentage': float(row['total_amount'] / total_revenue * 100) if total_revenue > 0 else 0,
+            'avg_order_value': float(row['total_amount'] / row['transaction_count']) if row['transaction_count'] > 0 else 0,
+            'preferred_payment': preferred_payment,
+            'preferred_purchase_type': preferred_purchase_type
+        }
+    
+    print('Sales by purchase type:', sales_by_purchase_type)
+    print('Sales by manager:', sales_by_manager)
+    print('Sales by city:', sales_by_city)
+    
     result = {
         "summary": {
             "total_revenue": float(total_revenue),
@@ -323,12 +456,15 @@ def get_sales_analytics(db: Session, restaurant_id: int, start_date: Optional[da
         },
         "daily_sales": daily_sales,
         "top_items": top_items,
-        "sales_by_category": sales_by_category,  # Keep as dictionary
+        "sales_by_category": sales_by_category,
         "sales_by_payment_method": sales_by_payment_method,
         "sales_by_day_of_week": sales_by_day_of_week,
-        "sales_by_hour": sales_by_hour,  # Keep as dictionary
-        "anomalies": [],  
-        "insights": []    
+        "sales_by_hour": sales_by_hour,
+        "sales_by_purchase_type": sales_by_purchase_type,
+        "sales_by_manager": sales_by_manager,
+        "sales_by_city": sales_by_city,
+        "anomalies": [],
+        "insights": []
     }
     
     print(f"Returning analytics data with {len(daily_sales)} daily sales records")

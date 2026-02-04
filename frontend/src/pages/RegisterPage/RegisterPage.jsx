@@ -7,7 +7,7 @@ const RegisterPage = () => {
   const navigate = useNavigate();
   
   const handleSuccess = () => {
-    navigate('/login', { 
+    navigate('/', { 
       state: { 
         message: 'Registration successful! Please log in with your credentials.' 
       } 

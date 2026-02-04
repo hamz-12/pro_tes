@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { Toaster } from 'react-hot-toast';
@@ -8,26 +8,53 @@ import { NotificationProvider } from './context/NotificationContext';
 import Loading from './components/common/Loading/Loading';
 import ProtectedRoute from './components/auth/ProtectedRoute/ProtectedRoute';
 import ProfilePage from './pages/ProfilePage/ProfilePage';
+import { 
+  restoreQueryCache, 
+  setupCachePersistence 
+} from './utils/queryPersister';
 
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('./pages/HomePage/HomePage'));
-// const DashboardPage = lazy(() => import('./pages/DashboardPage/DashboardPage'));
 import DashboardPage from './pages/DashboardPage/DashboardPage';
-const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage/AnalyticsPage'));
-const DataPage = lazy(() => import('./pages/DataPage/DataPage'));
-const SettingsPage = lazy(() => import('./pages/SettingsPage/SettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage/RegisterPage'));
 
+// Create QueryClient with optimized settings
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      // Data is fresh for 5 minutes - won't refetch if younger than this
+      staleTime: 5 * 60 * 1000,
+      
+      // Keep unused data in cache for 30 minutes
+      cacheTime: 30 * 60 * 1000,
+      
+      // Don't refetch on window focus
       refetchOnWindowFocus: false,
+      
+      // Don't refetch on component mount if data exists and is fresh
+      refetchOnMount: false,
+      
+      // Don't refetch on reconnect
+      refetchOnReconnect: false,
+      
+      // Retry failed requests once
       retry: 1,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      
+      // Keep showing old data while fetching new data
+      keepPreviousData: true,
+    },
+    mutations: {
+      retry: 1,
     },
   },
 });
+
+// Restore cache from localStorage on app start
+restoreQueryCache(queryClient);
+
+// Setup auto-persistence
+setupCachePersistence(queryClient);
 
 const AppRoutes = () => {
   const { isAuthenticated, loading } = useAuth();
@@ -48,21 +75,6 @@ const AppRoutes = () => {
       <Route path="/dashboard" element={
         <ProtectedRoute>
           <DashboardPage />
-        </ProtectedRoute>
-      } />
-      <Route path="/analytics" element={
-        <ProtectedRoute>
-          <AnalyticsPage />
-        </ProtectedRoute>
-      } />
-      <Route path="/data" element={
-        <ProtectedRoute>
-          <DataPage />
-        </ProtectedRoute>
-      } />
-      <Route path="/settings" element={
-        <ProtectedRoute>
-          <SettingsPage />
         </ProtectedRoute>
       } />
       <Route path="/profile" element={

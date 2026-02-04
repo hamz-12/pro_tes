@@ -1,6 +1,7 @@
-// Create components/profile/Profile/Profile.jsx
+// components/profile/Profile/Profile.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { 
   FiUser, 
   FiMail, 
@@ -18,15 +19,31 @@ import {
   FiAward,
   FiShield,
   FiActivity,
-  FiTrendingUp
+  FiTrendingUp,
+  FiAlertCircle,
+  FiTrash2,
+  FiLoader
 } from 'react-icons/fi';
 import { useAuth } from '../../../context/AuthContext';
+import * as userService from '../../../services/userService';
 import { toast } from 'react-hot-toast';
 import styles from './Profile.module.css';
 
 const Profile = () => {
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
+  // States
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [activeTab, setActiveTab] = useState('profile');
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errors, setErrors] = useState({});
+  
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -38,42 +55,147 @@ const Profile = () => {
     website: '',
     jobTitle: ''
   });
+  
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
     confirmPassword: ''
   });
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [profileImage, setProfileImage] = useState(null);
-  const [previewImage, setPreviewImage] = useState(null);
-  const [activeTab, setActiveTab] = useState('profile');
-  const [saving, setSaving] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
+  
   const [stats, setStats] = useState({
-    totalRestaurants: 1,
-    totalUploads: 12,
-    totalRevenue: 397886.61,
-    joinDate: 'January 2024'
+    totalRestaurants: 0,
+    totalUploads: 0,
+    totalRevenue: 0,
+    joinDate: ''
   });
+  
+  const [previewImage, setPreviewImage] = useState(null);
+  
+  const fileInputRef = useRef(null);
 
-  const profileRef = useRef(null);
-  const isInView = useInView(profileRef, { once: true });
-
+  // Fetch user data with stats on mount
   useEffect(() => {
-    if (user) {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      setLoading(true);
+      const userData = await userService.getUserWithStats();
+      console.log('User data received:', userData);
+      
+      const transformedData = userService.transformUserData(userData);
+      console.log('Transformed data:', transformedData);
+      
       setFormData({
-        username: user.username || '',
-        email: user.email || '',
-        firstName: user.firstName || '',
-        lastName: user.lastName || '',
-        phone: user.phone || '',
-        bio: user.bio || '',
-        location: user.location || '',
-        website: user.website || '',
-        jobTitle: user.jobTitle || ''
+        username: transformedData.username || '',
+        email: transformedData.email || '',
+        firstName: transformedData.firstName || '',
+        lastName: transformedData.lastName || '',
+        phone: transformedData.phone || '',
+        bio: transformedData.bio || '',
+        location: transformedData.location || '',
+        website: transformedData.website || '',
+        jobTitle: transformedData.jobTitle || ''
       });
+      
+      setStats({
+        totalRestaurants: transformedData.totalRestaurants || 0,
+        totalUploads: transformedData.totalUploads || 0,
+        totalRevenue: transformedData.totalRevenue || 0,
+        joinDate: formatJoinDate(transformedData.createdAt)
+      });
+      
+      if (transformedData.profileImage) {
+        setPreviewImage(`${import.meta.env.VITE_API_URL}/uploads/${transformedData.profileImage}`);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      toast.error('Failed to load profile data');
+      
+      // Fallback to user from context if API fails
+      if (user) {
+        const userData = user.data || user;
+        setFormData({
+          username: userData.username || '',
+          email: userData.email || '',
+          firstName: userData.first_name || '',
+          lastName: userData.last_name || '',
+          phone: userData.phone || '',
+          bio: userData.bio || '',
+          location: userData.location || '',
+          website: userData.website || '',
+          jobTitle: userData.job_title || ''
+        });
+        setStats({
+          totalRestaurants: 0,
+          totalUploads: 0,
+          totalRevenue: 0,
+          joinDate: formatJoinDate(userData.created_at)
+        });
+      }
+    } finally {
+      setLoading(false);
     }
-  }, [user]);
+  };
+
+  const formatJoinDate = (dateString) => {
+    if (!dateString) return 'Unknown';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.username.trim()) {
+      newErrors.username = 'Username is required';
+    } else if (formData.username.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Invalid email format';
+    }
+    
+    if (formData.phone && !/^[\d\s\-\(\)\+]{10,}$/.test(formData.phone.replace(/\s/g, ''))) {
+      newErrors.phone = 'Invalid phone number';
+    }
+    
+    if (formData.website && !/^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/.test(formData.website)) {
+      newErrors.website = 'Invalid website URL';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const validatePassword = () => {
+    const newErrors = {};
+    
+    if (!passwordData.currentPassword) {
+      newErrors.currentPassword = 'Current password is required';
+    }
+    
+    if (!passwordData.newPassword) {
+      newErrors.newPassword = 'New password is required';
+    } else if (passwordData.newPassword.length < 8) {
+      newErrors.newPassword = 'Password must be at least 8 characters';
+    }
+    
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -81,6 +203,14 @@ const Profile = () => {
       ...prev,
       [name]: value
     }));
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: null
+      }));
+    }
   };
 
   const handlePasswordChange = (e) => {
@@ -89,52 +219,104 @@ const Profile = () => {
       ...prev,
       [name]: value
     }));
+    
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: null
+      }));
+    }
   };
 
-  const handleImageChange = (e) => {
+  const handleImageChange = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setProfileImage(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Invalid file type. Please upload JPEG, PNG, GIF, or WEBP');
+      return;
+    }
+    
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 5MB');
+      return;
+    }
+    
+    // Show preview immediately
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewImage(reader.result);
+    };
+    reader.readAsDataURL(file);
+    
+    // Upload to server
+    try {
+      setUploadingImage(true);
+      await userService.uploadProfileImage(file);
+      toast.success('Profile image updated');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      toast.error(error.response?.data?.detail || 'Failed to upload image');
+      setPreviewImage(null);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    try {
+      setUploadingImage(true);
+      await userService.removeProfileImage();
+      setPreviewImage(null);
+      toast.success('Profile image removed');
+    } catch (error) {
+      console.error('Error removing image:', error);
+      toast.error('Failed to remove image');
+    } finally {
+      setUploadingImage(false);
     }
   };
 
   const handleSaveProfile = async () => {
+    if (!validateForm()) {
+      toast.error('Please fix the errors before saving');
+      return;
+    }
+    
     try {
       setSaving(true);
-      await updateUser(formData);
+      await userService.updateProfile(formData);
+      
       setIsEditing(false);
       setSuccessMessage('Profile updated successfully');
       toast.success('Profile updated successfully');
       
-      // Clear success message after 3 seconds
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
-      toast.error('Failed to update profile');
+      console.error('Error updating profile:', error);
+      const message = error.response?.data?.detail || 'Failed to update profile';
+      toast.error(message);
     } finally {
       setSaving(false);
     }
   };
 
   const handleChangePassword = async () => {
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error('Passwords do not match');
+    if (!validatePassword()) {
+      toast.error('Please fix the errors before saving');
       return;
     }
     
-    if (passwordData.newPassword.length < 8) {
-      toast.error('Password must be at least 8 characters');
-      return;
-    }
-
     try {
-      setSaving(true);
-      // Change password API call
-      // await changePassword(passwordData.currentPassword, passwordData.newPassword);
+      setChangingPassword(true);
+      await userService.changePassword(
+        passwordData.currentPassword,
+        passwordData.newPassword
+      );
+      
       setPasswordData({
         currentPassword: '',
         newPassword: '',
@@ -143,34 +325,44 @@ const Profile = () => {
       setShowPasswordForm(false);
       toast.success('Password changed successfully');
     } catch (error) {
-      toast.error('Failed to change password');
+      console.error('Error changing password:', error);
+      const message = error.response?.data?.detail || 'Failed to change password';
+      toast.error(message);
     } finally {
-      setSaving(false);
+      setChangingPassword(false);
     }
   };
 
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setErrors({});
+    fetchUserData();
+  };
+
+  // Animation variants - FIXED: removed dependency on useInView
   const containerVariants = {
-    hidden: { opacity: 0 },
+    hidden: { opacity: 0, y: 20 },
     visible: {
       opacity: 1,
+      y: 0,
       transition: {
-        duration: 0.5,
+        duration: 0.4,
         staggerChildren: 0.1
       }
     }
   };
 
   const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
+    hidden: { opacity: 0, y: 10 },
     visible: {
       opacity: 1,
       y: 0,
-      transition: { duration: 0.5 }
+      transition: { duration: 0.3 }
     }
   };
 
   const tabVariants = {
-    hidden: { opacity: 0, x: -20 },
+    hidden: { opacity: 0, x: -10 },
     visible: {
       opacity: 1,
       x: 0,
@@ -178,44 +370,73 @@ const Profile = () => {
     },
     exit: {
       opacity: 0,
-      x: 20,
-      transition: { duration: 0.3 }
+      x: 10,
+      transition: { duration: 0.2 }
     }
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className={styles.loadingContainer}>
+        <div className={styles.loadingSpinner}>
+          <FiLoader size={40} className={styles.spinIcon} />
+        </div>
+        <p>Loading profile...</p>
+      </div>
+    );
+  }
 
   return (
     <motion.div
       className={styles.profileContainer}
-      ref={profileRef}
       variants={containerVariants}
       initial="hidden"
-      animate={isInView ? "visible" : "hidden"}
+      animate="visible"
     >
+      {/* Profile Header */}
       <div className={styles.profileHeader}>
         <motion.div
           className={styles.profileImageContainer}
           variants={itemVariants}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
         >
           <div className={styles.profileImage}>
-            {previewImage ? (
+            {uploadingImage ? (
+              <div className={styles.imageLoading}>
+                <FiLoader size={30} className={styles.spinIcon} />
+              </div>
+            ) : previewImage ? (
               <img src={previewImage} alt="Profile" />
             ) : (
               <FiUser size={60} />
             )}
           </div>
+          
           {isEditing && (
-            <label className={styles.imageUploadLabel}>
-              <FiCamera size={20} />
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                style={{ display: 'none' }}
-              />
-            </label>
+            <div className={styles.imageActions}>
+              <label className={styles.imageUploadLabel}>
+                <FiCamera size={18} />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  onChange={handleImageChange}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              {previewImage && (
+                <button 
+                  className={styles.removeImageButton}
+                  onClick={handleRemoveImage}
+                  disabled={uploadingImage}
+                  type="button"
+                >
+                  <FiTrash2 size={18} />
+                </button>
+              )}
+            </div>
           )}
+          
           <div className={styles.profileStatus}>
             <div className={styles.statusIndicator}></div>
             <span>Active</span>
@@ -229,12 +450,18 @@ const Profile = () => {
           <h1 className={styles.profileName}>
             {formData.firstName && formData.lastName 
               ? `${formData.firstName} ${formData.lastName}`
-              : formData.username
+              : formData.username || 'User'
             }
           </h1>
-          <p className={styles.profileEmail}>{formData.email}</p>
+          <p className={styles.profileEmail}>
+            <FiMail size={14} />
+            {formData.email || 'No email'}
+          </p>
           {formData.jobTitle && (
-            <p className={styles.profileJobTitle}>{formData.jobTitle}</p>
+            <p className={styles.profileJobTitle}>
+              <FiBriefcase size={14} />
+              {formData.jobTitle}
+            </p>
           )}
           <div className={styles.profileMeta}>
             {formData.location && (
@@ -243,10 +470,20 @@ const Profile = () => {
                 <span>{formData.location}</span>
               </div>
             )}
+            {formData.phone && (
+              <div className={styles.metaItem}>
+                <FiPhone size={14} />
+                <span>{formData.phone}</span>
+              </div>
+            )}
             {formData.website && (
               <div className={styles.metaItem}>
                 <FiGlobe size={14} />
-                <a href={formData.website} target="_blank" rel="noopener noreferrer">
+                <a 
+                  href={formData.website.startsWith('http') ? formData.website : `https://${formData.website}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                >
                   {formData.website.replace(/^https?:\/\//, '')}
                 </a>
               </div>
@@ -266,8 +503,9 @@ const Profile = () => {
             <motion.button
               className={styles.editButton}
               onClick={() => setIsEditing(true)}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              type="button"
             >
               <FiEdit2 size={16} />
               Edit Profile
@@ -278,33 +516,29 @@ const Profile = () => {
                 className={styles.saveButton}
                 onClick={handleSaveProfile}
                 disabled={saving}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="button"
               >
-                {saving ? <FiCheck size={16} /> : <FiSave size={16} />}
-                {saving ? 'Saving...' : 'Save'}
+                {saving ? (
+                  <>
+                    <FiLoader size={16} className={styles.spinIcon} />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <FiSave size={16} />
+                    Save Changes
+                  </>
+                )}
               </motion.button>
               <motion.button
                 className={styles.cancelButton}
-                onClick={() => {
-                  setIsEditing(false);
-                  // Reset form data
-                  if (user) {
-                    setFormData({
-                      username: user.username || '',
-                      email: user.email || '',
-                      firstName: user.firstName || '',
-                      lastName: user.lastName || '',
-                      phone: user.phone || '',
-                      bio: user.bio || '',
-                      location: user.location || '',
-                      website: user.website || '',
-                      jobTitle: user.jobTitle || ''
-                    });
-                  }
-                }}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                onClick={handleCancelEdit}
+                disabled={saving}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                type="button"
               >
                 <FiX size={16} />
                 Cancel
@@ -320,8 +554,8 @@ const Profile = () => {
         variants={itemVariants}
       >
         <div className={styles.statCard}>
-          <div className={styles.statIcon}>
-            <FiBriefcase />
+          <div className={`${styles.statIcon} ${styles.statIconBlue}`}>
+            <FiBriefcase size={22} />
           </div>
           <div className={styles.statContent}>
             <h3>{stats.totalRestaurants}</h3>
@@ -330,8 +564,8 @@ const Profile = () => {
         </div>
         
         <div className={styles.statCard}>
-          <div className={styles.statIcon}>
-            <FiActivity />
+          <div className={`${styles.statIcon} ${styles.statIconGreen}`}>
+            <FiActivity size={22} />
           </div>
           <div className={styles.statContent}>
             <h3>{stats.totalUploads}</h3>
@@ -340,8 +574,8 @@ const Profile = () => {
         </div>
         
         <div className={styles.statCard}>
-          <div className={styles.statIcon}>
-            <FiTrendingUp />
+          <div className={`${styles.statIcon} ${styles.statIconPurple}`}>
+            <FiTrendingUp size={22} />
           </div>
           <div className={styles.statContent}>
             <h3>${stats.totalRevenue.toLocaleString()}</h3>
@@ -350,8 +584,8 @@ const Profile = () => {
         </div>
         
         <div className={styles.statCard}>
-          <div className={styles.statIcon}>
-            <FiAward />
+          <div className={`${styles.statIcon} ${styles.statIconOrange}`}>
+            <FiAward size={22} />
           </div>
           <div className={styles.statContent}>
             <h3>Premium</h3>
@@ -360,33 +594,35 @@ const Profile = () => {
         </div>
       </motion.div>
 
+      {/* Tabs */}
       <div className={styles.profileTabs}>
-        <motion.button
+        <button
           className={`${styles.tabButton} ${activeTab === 'profile' ? styles.active : ''}`}
           onClick={() => setActiveTab('profile')}
-          whileHover={{ y: -2 }}
-          whileTap={{ y: 0 }}
+          type="button"
         >
+          <FiUser size={16} />
           Profile Information
-        </motion.button>
-        <motion.button
+        </button>
+        <button
           className={`${styles.tabButton} ${activeTab === 'security' ? styles.active : ''}`}
           onClick={() => setActiveTab('security')}
-          whileHover={{ y: -2 }}
-          whileTap={{ y: 0 }}
+          type="button"
         >
+          <FiShield size={16} />
           Security
-        </motion.button>
-        <motion.button
+        </button>
+        <button
           className={`${styles.tabButton} ${activeTab === 'preferences' ? styles.active : ''}`}
           onClick={() => setActiveTab('preferences')}
-          whileHover={{ y: -2 }}
-          whileTap={{ y: 0 }}
+          type="button"
         >
+          <FiActivity size={16} />
           Preferences
-        </motion.button>
+        </button>
       </div>
 
+      {/* Tab Content */}
       <div className={styles.profileContent}>
         <AnimatePresence mode="wait">
           {activeTab === 'profile' && (
@@ -399,11 +635,10 @@ const Profile = () => {
               exit="exit"
             >
               <div className={styles.formGrid}>
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
-                  <label htmlFor="username">Username</label>
+                <div className={`${styles.formGroup} ${errors.username ? styles.hasError : ''}`}>
+                  <label htmlFor="username">
+                    Username <span className={styles.required}>*</span>
+                  </label>
                   <input
                     type="text"
                     id="username"
@@ -412,14 +647,20 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="Enter username"
                   />
-                </motion.div>
+                  {errors.username && (
+                    <span className={styles.errorMessage}>
+                      <FiAlertCircle size={12} />
+                      {errors.username}
+                    </span>
+                  )}
+                </div>
                 
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
-                  <label htmlFor="email">Email</label>
+                <div className={`${styles.formGroup} ${errors.email ? styles.hasError : ''}`}>
+                  <label htmlFor="email">
+                    Email <span className={styles.required}>*</span>
+                  </label>
                   <input
                     type="email"
                     id="email"
@@ -428,13 +669,17 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="Enter email"
                   />
-                </motion.div>
+                  {errors.email && (
+                    <span className={styles.errorMessage}>
+                      <FiAlertCircle size={12} />
+                      {errors.email}
+                    </span>
+                  )}
+                </div>
                 
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
+                <div className={styles.formGroup}>
                   <label htmlFor="firstName">First Name</label>
                   <input
                     type="text"
@@ -444,13 +689,11 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="Enter first name"
                   />
-                </motion.div>
+                </div>
                 
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
+                <div className={styles.formGroup}>
                   <label htmlFor="lastName">Last Name</label>
                   <input
                     type="text"
@@ -460,13 +703,11 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="Enter last name"
                   />
-                </motion.div>
+                </div>
                 
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
+                <div className={`${styles.formGroup} ${errors.phone ? styles.hasError : ''}`}>
                   <label htmlFor="phone">Phone</label>
                   <input
                     type="tel"
@@ -476,13 +717,17 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="Enter phone number"
                   />
-                </motion.div>
+                  {errors.phone && (
+                    <span className={styles.errorMessage}>
+                      <FiAlertCircle size={12} />
+                      {errors.phone}
+                    </span>
+                  )}
+                </div>
                 
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
+                <div className={styles.formGroup}>
                   <label htmlFor="jobTitle">Job Title</label>
                   <input
                     type="text"
@@ -492,13 +737,11 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="Enter job title"
                   />
-                </motion.div>
+                </div>
                 
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
+                <div className={styles.formGroup}>
                   <label htmlFor="location">Location</label>
                   <input
                     type="text"
@@ -508,13 +751,11 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="Enter location"
                   />
-                </motion.div>
+                </div>
                 
-                <motion.div 
-                  className={styles.formGroup}
-                  variants={itemVariants}
-                >
+                <div className={`${styles.formGroup} ${errors.website ? styles.hasError : ''}`}>
                   <label htmlFor="website">Website</label>
                   <input
                     type="url"
@@ -524,14 +765,18 @@ const Profile = () => {
                     onChange={handleInputChange}
                     disabled={!isEditing}
                     className={isEditing ? styles.editing : ''}
+                    placeholder="https://example.com"
                   />
-                </motion.div>
+                  {errors.website && (
+                    <span className={styles.errorMessage}>
+                      <FiAlertCircle size={12} />
+                      {errors.website}
+                    </span>
+                  )}
+                </div>
               </div>
               
-              <motion.div 
-                className={styles.formGroup}
-                variants={itemVariants}
-              >
+              <div className={styles.formGroup}>
                 <label htmlFor="bio">Bio</label>
                 <textarea
                   id="bio"
@@ -541,8 +786,15 @@ const Profile = () => {
                   disabled={!isEditing}
                   className={`${styles.bioTextarea} ${isEditing ? styles.editing : ''}`}
                   rows={4}
+                  placeholder="Tell us about yourself..."
+                  maxLength={500}
                 />
-              </motion.div>
+                {isEditing && (
+                  <span className={styles.charCount}>
+                    {formData.bio?.length || 0}/500
+                  </span>
+                )}
+              </div>
             </motion.div>
           )}
           
@@ -556,33 +808,40 @@ const Profile = () => {
               exit="exit"
             >
               {!showPasswordForm ? (
-                <motion.div 
-                  className={styles.securitySection}
-                  variants={itemVariants}
-                >
+                <div className={styles.securitySection}>
                   <div className={styles.securityIcon}>
                     <FiShield size={48} />
                   </div>
                   <h3>Security Settings</h3>
                   <p>Manage your password and authentication settings to keep your account secure</p>
-                  <motion.button
+                  
+                  <div className={styles.securityInfo}>
+                    <div className={styles.securityItem}>
+                      <FiLock size={20} />
+                      <div>
+                        <h4>Password</h4>
+                        <p>Last changed: Never</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <button
                     className={styles.changePasswordButton}
                     onClick={() => setShowPasswordForm(true)}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                    type="button"
                   >
                     <FiLock size={16} />
                     Change Password
-                  </motion.button>
-                </motion.div>
+                  </button>
+                </div>
               ) : (
-                <motion.div 
-                  className={styles.passwordForm}
-                  variants={itemVariants}
-                >
+                <div className={styles.passwordForm}>
                   <h3>Change Password</h3>
+                  <p className={styles.passwordHint}>
+                    Password must be at least 8 characters
+                  </p>
                   
-                  <div className={styles.formGroup}>
+                  <div className={`${styles.formGroup} ${errors.currentPassword ? styles.hasError : ''}`}>
                     <label htmlFor="currentPassword">Current Password</label>
                     <input
                       type="password"
@@ -590,10 +849,17 @@ const Profile = () => {
                       name="currentPassword"
                       value={passwordData.currentPassword}
                       onChange={handlePasswordChange}
+                      placeholder="Enter current password"
                     />
+                    {errors.currentPassword && (
+                      <span className={styles.errorMessage}>
+                        <FiAlertCircle size={12} />
+                        {errors.currentPassword}
+                      </span>
+                    )}
                   </div>
                   
-                  <div className={styles.formGroup}>
+                  <div className={`${styles.formGroup} ${errors.newPassword ? styles.hasError : ''}`}>
                     <label htmlFor="newPassword">New Password</label>
                     <input
                       type="password"
@@ -601,10 +867,17 @@ const Profile = () => {
                       name="newPassword"
                       value={passwordData.newPassword}
                       onChange={handlePasswordChange}
+                      placeholder="Enter new password"
                     />
+                    {errors.newPassword && (
+                      <span className={styles.errorMessage}>
+                        <FiAlertCircle size={12} />
+                        {errors.newPassword}
+                      </span>
+                    )}
                   </div>
                   
-                  <div className={styles.formGroup}>
+                  <div className={`${styles.formGroup} ${errors.confirmPassword ? styles.hasError : ''}`}>
                     <label htmlFor="confirmPassword">Confirm New Password</label>
                     <input
                       type="password"
@@ -612,20 +885,36 @@ const Profile = () => {
                       name="confirmPassword"
                       value={passwordData.confirmPassword}
                       onChange={handlePasswordChange}
+                      placeholder="Confirm new password"
                     />
+                    {errors.confirmPassword && (
+                      <span className={styles.errorMessage}>
+                        <FiAlertCircle size={12} />
+                        {errors.confirmPassword}
+                      </span>
+                    )}
                   </div>
                   
                   <div className={styles.passwordActions}>
-                    <motion.button
+                    <button
                       className={styles.saveButton}
                       onClick={handleChangePassword}
-                      disabled={saving}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      disabled={changingPassword}
+                      type="button"
                     >
-                      {saving ? 'Saving...' : 'Update Password'}
-                    </motion.button>
-                    <motion.button
+                      {changingPassword ? (
+                        <>
+                          <FiLoader size={16} className={styles.spinIcon} />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <FiCheck size={16} />
+                          Update Password
+                        </>
+                      )}
+                    </button>
+                    <button
                       className={styles.cancelButton}
                       onClick={() => {
                         setShowPasswordForm(false);
@@ -634,14 +923,16 @@ const Profile = () => {
                           newPassword: '',
                           confirmPassword: ''
                         });
+                        setErrors({});
                       }}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      disabled={changingPassword}
+                      type="button"
                     >
+                      <FiX size={16} />
                       Cancel
-                    </motion.button>
+                    </button>
                   </div>
-                </motion.div>
+                </div>
               )}
             </motion.div>
           )}
@@ -655,10 +946,7 @@ const Profile = () => {
               animate="visible"
               exit="exit"
             >
-              <motion.div 
-                className={styles.preferencesSection}
-                variants={itemVariants}
-              >
+              <div className={styles.preferencesSection}>
                 <h3>Notification Preferences</h3>
                 <p>Control how and when you receive notifications</p>
                 
@@ -686,6 +974,17 @@ const Profile = () => {
                 
                 <div className={styles.preferenceItem}>
                   <div className={styles.preferenceInfo}>
+                    <h4>Anomaly Alerts</h4>
+                    <p>Get notified when unusual patterns are detected</p>
+                  </div>
+                  <label className={styles.toggleSwitch}>
+                    <input type="checkbox" defaultChecked />
+                    <span className={styles.slider}></span>
+                  </label>
+                </div>
+                
+                <div className={styles.preferenceItem}>
+                  <div className={styles.preferenceInfo}>
                     <h4>Marketing Updates</h4>
                     <p>Receive information about new features and updates</p>
                   </div>
@@ -694,20 +993,47 @@ const Profile = () => {
                     <span className={styles.slider}></span>
                   </label>
                 </div>
-              </motion.div>
+              </div>
+              
+              <div className={styles.preferencesSection}>
+                <h3>Display Preferences</h3>
+                <p>Customize your dashboard experience</p>
+                
+                <div className={styles.preferenceItem}>
+                  <div className={styles.preferenceInfo}>
+                    <h4>Compact View</h4>
+                    <p>Show more data in less space</p>
+                  </div>
+                  <label className={styles.toggleSwitch}>
+                    <input type="checkbox" />
+                    <span className={styles.slider}></span>
+                  </label>
+                </div>
+                
+                <div className={styles.preferenceItem}>
+                  <div className={styles.preferenceInfo}>
+                    <h4>Show Animations</h4>
+                    <p>Enable smooth transitions and animations</p>
+                  </div>
+                  <label className={styles.toggleSwitch}>
+                    <input type="checkbox" defaultChecked />
+                    <span className={styles.slider}></span>
+                  </label>
+                </div>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Success Message */}
+      {/* Success Message Toast */}
       <AnimatePresence>
         {successMessage && (
           <motion.div
             className={styles.successMessage}
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
+            exit={{ opacity: 0, y: 50 }}
             transition={{ duration: 0.3 }}
           >
             <FiCheck size={20} />
