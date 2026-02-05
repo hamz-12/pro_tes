@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
-import api from '../../services/api';
 import { FiEye, FiEyeOff, FiMail, FiLock, FiAlertCircle, FiCheckCircle } from "react-icons/fi";
 import styles from './LoginPage.module.css';
 
@@ -92,7 +91,7 @@ const LoginPage = () => {
             </label>
             <div className={styles.inputContainer}>
               {/* FIXED: Changed Mail to FiMail */}
-              <FiMail className={styles.inputIcon} />
+              {/* <FiMail className={styles.inputIcon} /> */}
               <input
                 id="email"
                 type="email"
@@ -134,7 +133,7 @@ const LoginPage = () => {
             </label>
             <div className={styles.inputContainer}>
               {/* FIXED: Changed Lock to FiLock */}
-              <FiLock className={styles.inputIcon} />
+              {/* <FiLock className={styles.inputIcon} /> */}
               <input
                 id="password"
                 type={showPassword ? 'text' : 'password'}

@@ -1,1 +1,5 @@
-pythonVENV/
+backend/.env
+frontend/.env
+**/__pycache__/
+*.pyc
+backend/uploads/*

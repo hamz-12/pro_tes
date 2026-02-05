@@ -1,3 +1,4 @@
+// In SalesByHour.jsx, update the component to handle button clicks
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { FiClock, FiTrendingUp, FiTrendingDown, FiFilter } from 'react-icons/fi';
@@ -19,13 +20,40 @@ const SalesByHour = ({ data = [], loading = false }) => {
     }));
 
     // Fill in actual data
-    data.forEach(item => {
-      const hour = item.hour;
-      if (hour >= 0 && hour <= 23) {
-        hours[hour].total_revenue = item.total_revenue || 0;
-        hours[hour].transaction_count = item.transaction_count || 0;
-      }
-    });
+    if (data && Array.isArray(data)) {
+      data.forEach(item => {
+        let hour = item.hour;
+        
+        // If hour is not directly available, try to extract from datetime
+        if (hour === undefined && item.datetime) {
+          const date = new Date(item.datetime);
+          hour = date.getHours();
+        }
+        
+        // Handle case where hour is a string
+        if (typeof hour === 'string') {
+          hour = parseInt(hour, 10);
+        }
+        
+        if (hour >= 0 && hour <= 23) {
+          hours[hour].total_revenue = item.total_revenue || 0;
+          hours[hour].transaction_count = item.transaction_count || 0;
+        }
+      });
+    } else if (data && typeof data === 'object') {
+      // Handle case where data is an object with hour keys
+      Object.entries(data).forEach(([hour, values]) => {
+        const hourNum = parseInt(hour, 10);
+        if (hourNum >= 0 && hourNum <= 23) {
+          if (typeof values === 'object' && values !== null) {
+            hours[hourNum].total_revenue = values.total_revenue || 0;
+            hours[hourNum].transaction_count = values.transaction_count || 0;
+          } else {
+            hours[hourNum].total_revenue = values || 0;
+          }
+        }
+      });
+    }
 
     return hours;
   }, [data]);
@@ -67,7 +95,7 @@ const SalesByHour = ({ data = [], loading = false }) => {
     );
   }
 
-  if (!data.length) {
+  if (!data || (Array.isArray(data) && data.length === 0) || (typeof data === 'object' && Object.keys(data).length === 0)) {
     return (
       <div className={styles.container}>
         <div className={styles.emptyState}>
@@ -152,12 +180,13 @@ const SalesByHour = ({ data = [], loading = false }) => {
               
               return (
                 <motion.div
-                  key={hourData.hour}
+                  key={hourData.hour} // Add key prop to fix React warning
                   className={`${styles.hourBarContainer} ${isSelected ? styles.selected : ''}`}
                   onClick={() => setSelectedHour(isSelected ? null : hourData.hour)}
                   initial={{ opacity: 0, scaleY: 0 }}
                   animate={{ opacity: 1, scaleY: 1 }}
                   transition={{ delay: hourData.hour * 0.02, duration: 0.5 }}
+                  style={{ transformOrigin: 'bottom' }}
                   whileHover={{ y: -4 }}
                 >
                   <div className={styles.hourLabel}>{hourData.hour}</div>
@@ -193,7 +222,7 @@ const SalesByHour = ({ data = [], loading = false }) => {
           <div className={styles.peakList}>
             {peakHours.map((peak, index) => (
               <motion.div
-                key={peak.hour}
+                key={`peak-${index}`} // Add key prop to fix React warning
                 className={styles.peakItem}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -214,7 +243,7 @@ const SalesByHour = ({ data = [], loading = false }) => {
                   </div>
                 </div>
                 <div className={styles.peakPercentage}>
-                  {((peak.total_revenue / totalRevenue) * 100).toFixed(1)}%
+                  {totalRevenue > 0 ? ((peak.total_revenue / totalRevenue) * 100).toFixed(1) : 0}%
                 </div>
               </motion.div>
             ))}

@@ -1,3 +1,4 @@
+// frontend/src/components/Registration/Registration.jsx
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
@@ -11,11 +12,15 @@ import {
   FiArrowRight,
   FiHome,
   FiAlertCircle,
+  FiMapPin,
+  FiPhone,
+  FiFileText,
 } from 'react-icons/fi';
+import { authService } from '../../../services/authService';
+import { restaurantService } from '../../../services/restaurantService';
 import { useAuth } from '../../../context/AuthContext';
 import { toast } from 'react-hot-toast';
 import styles from './Registration.module.css';
-import { useNavigate } from 'react-router-dom';
 
 const Registration = ({ 
   onSuccess, 
@@ -23,12 +28,15 @@ const Registration = ({
   isModal = false,
   closeModal 
 }) => {
-  const { register: registerUser } = useAuth();
+  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(1);
   const [error, setError] = useState('');
+  const [userData, setUserData] = useState(null);
+  const [restaurantData, setRestaurantData] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const {
     register,
@@ -52,10 +60,29 @@ const Registration = ({
   const handleNext = async () => {
     if (step === 1) {
       const isValid = await trigger(['username', 'email', 'password', 'confirmPassword']);
-      if (isValid) setStep(2);
+      if (isValid) {
+        // Save user data
+        const userFormData = {
+          username: getValues('username'),
+          email: getValues('email'),
+          password: getValues('password'),
+        };
+        setUserData(userFormData);
+        setStep(2);
+      }
     } else if (step === 2) {
-      const isValid = await trigger(['restaurant_name']);
-      if (isValid) setStep(3);
+      const isValid = await trigger(['name', 'address', 'phone']);
+      if (isValid) {
+        // Save restaurant data
+        const restaurantFormData = {
+          name: getValues('name'),
+          address: getValues('address'),
+          phone: getValues('phone'),
+          description: getValues('description'),
+        };
+        setRestaurantData(restaurantFormData);
+        setStep(3);
+      }
     }
   };
 
@@ -65,42 +92,72 @@ const Registration = ({
     }
   };
 
-  const onSubmit = async (data) => {
+  const handleCompleteRegistration = async () => {
+    if (!userData || !restaurantData) {
+      setError('Missing user or restaurant data');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
+    setIsSubmitting(true);
 
     try {
-      // Prepare data for the backend
-      const userData = {
-        username: data.username,
-        email: data.email,
-        password: data.password,
-        restaurant_name: data.restaurant_name,
+      // Step 1: Register the user
+      const userRegistrationData = {
+        username: userData.username,
+        email: userData.email,
+        password: userData.password,
       };
-
-      const result = await registerUser(userData);
-
-      if (result.success) {
-        toast.success(result.message || 'Registration successful! Please log in with your credentials.');
+      
+      const userResult = await authService.register(userRegistrationData);
+      console.log('User Result: ', userResult);
+      
+      // Step 2: Log in to get auth token using the stored userData
+      try {
+        const result = await login(userData.email, userData.password);
+        console.log('Login Result: ', result);
         
-        if (isModal && closeModal) {
-          closeModal();
+        // Step 3: Create the restaurant (the API interceptor will automatically add the auth token)
+        const restaurantResult = await restaurantService.createRestaurant(restaurantData);
+        
+        if (!restaurantResult.success) {
+          console.error('Restaurant creation failed:', restaurantResult.message);
+          // We still consider registration successful, just show a warning
+          toast.success('Account created successfully! You can add your restaurant later from your dashboard.');
+        } else {
+          toast.success('Account and restaurant created successfully!');
         }
-        if (onSuccess) {
-          onSuccess();
-        }
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
+      } catch (loginError) {
+        console.error('Login after registration failed:', loginError);
+        toast.success('Account created successfully! You can now log in with your credentials.');
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
 
-        navigate('/');
-      } else {
-        setError(result.message || 'Registration failed');
-        setStep(1);
       }
+      
+      // Close modal if needed
+      if (isModal && closeModal) {
+        closeModal();
+      }
+      
+      // Navigate to login page with success message
+      if (onSuccess) {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
+        onSuccess();
+      }
+      
     } catch (err) {
       const errorMessage = err.response?.data?.detail || 'An unexpected error occurred';
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_data');
       setError(errorMessage);
-      setStep(1);
     } finally {
       setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -188,7 +245,8 @@ const Registration = ({
           ))}
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className={styles.form}>
+        {/* Remove handleSubmit from form and add it only to the submit button */}
+        <div className={styles.form}>
           {/* Step 1: Account Details */}
           <div className={`${styles.formStep} ${step === 1 ? styles.active : ''}`}>
             <div className={styles.inputGroup}>
@@ -356,7 +414,7 @@ const Registration = ({
               <div className={styles.inputWrapper}>
                 <input
                   type="text"
-                  {...register('restaurant_name', {
+                  {...register('name', {
                     required: 'Restaurant name is required',
                     minLength: {
                       value: 2,
@@ -364,71 +422,87 @@ const Registration = ({
                     },
                   })}
                   className={`${styles.input} ${
-                    errors.restaurant_name ? styles.error : ''
+                    errors.name ? styles.error : ''
                   }`}
                   placeholder="Your Restaurant Name"
                 />
                 <div className={styles.inputDecoration} />
               </div>
-              {errors.restaurant_name && (
+              {errors.name && (
                 <span className={styles.errorMessage}>
-                  {errors.restaurant_name.message}
+                  {errors.name.message}
                 </span>
               )}
             </div>
 
             <div className={styles.inputGroup}>
               <label className={styles.label}>
-                <FiMail className={styles.labelIcon} />
-                Restaurant Email (Optional)
+                <FiMapPin className={styles.labelIcon} />
+                Address
               </label>
               <div className={styles.inputWrapper}>
-                <input
-                  type="email"
-                  {...register('restaurant_email')}
-                  className={styles.input}
-                  placeholder="restaurant@email.com"
+                <textarea
+                  {...register('address', {
+                    required: 'Address is required',
+                  })}
+                  className={`${styles.input} ${styles.textarea} ${
+                    errors.address ? styles.error : ''
+                  }`}
+                  placeholder="Restaurant address"
+                  rows={3}
                 />
                 <div className={styles.inputDecoration} />
               </div>
-            </div>
-
-            <div className={styles.checkboxGroup}>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  {...register('terms', {
-                    required: 'You must accept the terms and conditions',
-                  })}
-                  className={styles.checkboxInput}
-                />
-                <span className={styles.customCheckbox} />
-                I agree to the{' '}
-                <button type="button" className={styles.linkButton}>
-                  Terms of Service
-                </button>{' '}
-                and{' '}
-                <button type="button" className={styles.linkButton}>
-                  Privacy Policy
-                </button>
-              </label>
-              {errors.terms && (
+              {errors.address && (
                 <span className={styles.errorMessage}>
-                  {errors.terms.message}
+                  {errors.address.message}
                 </span>
               )}
             </div>
 
-            <div className={styles.checkboxGroup}>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  {...register('newsletter')}
-                  className={styles.checkboxInput}
-                />
-                <span className={styles.customCheckbox} />
-                Subscribe to our newsletter for updates and tips
+            <div className={styles.inputGroup}>
+              <label className={styles.label}>
+                <FiPhone className={styles.labelIcon} />
+                Phone Number
               </label>
+              <div className={styles.inputWrapper}>
+                <input
+                  type="tel"
+                  {...register('phone', {
+                    required: 'Phone number is required',
+                    pattern: {
+                      value: /^[\d\s\-\+\(\)]+$/,
+                      message: 'Please enter a valid phone number',
+                    },
+                  })}
+                  className={`${styles.input} ${
+                    errors.phone ? styles.error : ''
+                  }`}
+                  placeholder="+1 (555) 123-4567"
+                />
+                <div className={styles.inputDecoration} />
+              </div>
+              {errors.phone && (
+                <span className={styles.errorMessage}>
+                  {errors.phone.message}
+                </span>
+              )}
+            </div>
+
+            <div className={styles.inputGroup}>
+              <label className={styles.label}>
+                <FiFileText className={styles.labelIcon} />
+                Description
+              </label>
+              <div className={styles.inputWrapper}>
+                <textarea
+                  {...register('description')}
+                  className={`${styles.input} ${styles.textarea}`}
+                  placeholder="Tell us about your restaurant, cuisine type, etc."
+                  rows={4}
+                />
+                <div className={styles.inputDecoration} />
+              </div>
             </div>
           </div>
 
@@ -443,23 +517,42 @@ const Registration = ({
                 Review your information before creating your account.
               </p>
               <div className={styles.confirmationDetails}>
-                <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Username:</span>
-                  <span className={styles.detailValue}>
-                    {watch('username')}
-                  </span>
+                <div className={styles.detailSection}>
+                  <h4 className={styles.sectionTitle}>Account Information</h4>
+                  <div className={styles.detailItem}>
+                    <span className={styles.detailLabel}>Username:</span>
+                    <span className={styles.detailValue}>
+                      {userData?.username || watch('username')}
+                    </span>
+                  </div>
+                  <div className={styles.detailItem}>
+                    <span className={styles.detailLabel}>Email:</span>
+                    <span className={styles.detailValue}>
+                      {userData?.email || watch('email')}
+                    </span>
+                  </div>
                 </div>
-                <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Email:</span>
-                  <span className={styles.detailValue}>
-                    {watch('email')}
-                  </span>
-                </div>
-                <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Restaurant:</span>
-                  <span className={styles.detailValue}>
-                    {watch('restaurant_name')}
-                  </span>
+                
+                <div className={styles.detailSection}>
+                  <h4 className={styles.sectionTitle}>Restaurant Information</h4>
+                  <div className={styles.detailItem}>
+                    <span className={styles.detailLabel}>Name:</span>
+                    <span className={styles.detailValue}>
+                      {restaurantData?.name || watch('name')}
+                    </span>
+                  </div>
+                  <div className={styles.detailItem}>
+                    <span className={styles.detailLabel}>Address:</span>
+                    <span className={styles.detailValue}>
+                      {restaurantData?.address || watch('address')}
+                    </span>
+                  </div>
+                  <div className={styles.detailItem}>
+                    <span className={styles.detailLabel}>Phone:</span>
+                    <span className={styles.detailValue}>
+                      {restaurantData?.phone || watch('phone')}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -478,7 +571,7 @@ const Registration = ({
                 type="button"
                 className={styles.backButton}
                 onClick={handleBack}
-                disabled={isLoading}
+                disabled={isLoading || isSubmitting}
               >
                 Back
               </button>
@@ -489,16 +582,17 @@ const Registration = ({
                 type="button"
                 className={styles.nextButton}
                 onClick={handleNext}
-                disabled={isLoading}
+                disabled={isLoading || isSubmitting}
               >
                 Continue
                 <FiArrowRight className={styles.buttonIcon} />
               </button>
             ) : (
               <button
-                type="submit"
+                type="button"
                 className={styles.submitButton}
-                disabled={isLoading}
+                onClick={handleCompleteRegistration}
+                disabled={isLoading || isSubmitting}
               >
                 {isLoading ? (
                   <div className={styles.spinner} />
@@ -508,7 +602,7 @@ const Registration = ({
               </button>
             )}
           </div>
-        </form>
+        </div>
 
         {!isModal && (
           <div className={styles.loginPrompt}>

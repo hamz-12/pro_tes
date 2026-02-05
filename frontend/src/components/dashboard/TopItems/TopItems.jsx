@@ -1,10 +1,11 @@
+// In TopItems.jsx, update the component to handle button clicks
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiTrendingUp, FiTrendingDown, FiStar, FiChevronRight } from 'react-icons/fi';
 import styles from './TopItems.module.css';
 import { formatCurrency, formatNumber } from '../../../utils/formatters';
 
-const TopItems = ({ items = [], loading = false, limit = 5 }) => {
+const TopItems = ({ items = [], loading = false, limit = 5, onViewAllItems }) => {
   const [sortBy, setSortBy] = useState('revenue');
   const [viewMode, setViewMode] = useState('list');
 
@@ -162,19 +163,22 @@ const TopItems = ({ items = [], loading = false, limit = 5 }) => {
                 <div className={styles.statItem}>
                   <span className={styles.statLabel}>Revenue</span>
                   <span className={styles.statValue}>
-                    {formatCurrency(item.total_revenue)}
+                    {formatCurrency(item.total_revenue  || 0)}
                   </span>
                 </div>
                 <div className={styles.statItem}>
                   <span className={styles.statLabel}>Units Sold</span>
                   <span className={styles.statValue}>
-                    {formatNumber(item.total_quantity)}
+                    {formatNumber(item.total_quantity || 0)}
                   </span>
                 </div>
                 <div className={styles.statItem}>
                   <span className={styles.statLabel}>Avg. Price</span>
                   <span className={styles.statValue}>
-                    {formatCurrency(item.total_revenue / item.total_quantity)}
+                    {item.total_quantity > 0 
+                      ? formatCurrency((item.total_revenue || 0) / item.total_quantity)
+                      : formatCurrency(0)
+                    }
                   </span>
                 </div>
               </div>
@@ -186,14 +190,14 @@ const TopItems = ({ items = [], loading = false, limit = 5 }) => {
                       className={styles.progressFill}
                       initial={{ width: 0 }}
                       animate={{
-                        width: `${(item.total_revenue / totalRevenue) * 100}%`,
+                        width: `${totalRevenue > 0 ? ((item.total_revenue || 0) / totalRevenue) * 100 : 0}%`,
                       }}
                       transition={{ delay: index * 0.1 + 0.3, duration: 0.8 }}
                       style={{ backgroundColor: getCategoryColor(item.category) }}
                     />
                   </div>
                   <span className={styles.progressPercentage}>
-                    {((item.total_revenue / totalRevenue) * 100).toFixed(1)}%
+                    {totalRevenue > 0 ? (((item.total_revenue || 0) / totalRevenue) * 100).toFixed(1) : 0}%
                   </span>
                 </div>
               )}
@@ -207,7 +211,18 @@ const TopItems = ({ items = [], loading = false, limit = 5 }) => {
       </div>
 
       <div className={styles.footer}>
-        <button className={styles.viewAllButton}>
+        <button 
+          className={styles.viewAllButton} 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (onViewAllItems) {
+              onViewAllItems();
+            } else {
+              console.log('View all items clicked - no handler provided');
+            }
+          }}
+        >
           View All Items
           <FiChevronRight className={styles.buttonIcon} />
         </button>

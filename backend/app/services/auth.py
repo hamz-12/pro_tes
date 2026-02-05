@@ -36,12 +36,17 @@ def authenticate_user(db: Session, username: str, password: str):
 def update_user(db: Session, user_id: int, user_update: UserUpdate):
     db_user = get_user(db, user_id)
     if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        return None  # Let the router handle the 404 exception
+
+    # Convert schema to dict, ignoring fields that weren't provided
+    update_data = user_update.model_dump(exclude_unset=True)
     
-    update_data = user_update.dict(exclude_unset=True)
+    # Check if password is being updated
+    if "password" in update_data:
+        password = update_data.pop("password")
+        db_user.hashed_password = get_password_hash(password)
+
+    # Update remaining fields
     for key, value in update_data.items():
         setattr(db_user, key, value)
     

@@ -1,43 +1,58 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+from datetime import datetime
 from ...core.database import get_db
 from ...models.user import User
 from ...models.restaurant import Restaurant
 from ...schemas.sales import AnalyticsRequest, AnalyticsResponse
 from ...services.sales import get_sales_analytics
-from ...services.openai_service import detect_anomalies, generate_insights
+from ...services.llm_services import detect_anomalies, generate_insights
 from ...api.deps import get_current_active_user
 
 router = APIRouter()
 
-@router.post("/", response_model=AnalyticsResponse)
+@router.get("/", response_model=AnalyticsResponse)
 def get_analytics(
-    request: AnalyticsRequest,
+    restaurant_id: int = Query(..., description="Restaurant ID"),
+    start_date: Optional[datetime] = Query(None, description="Start date for analytics"),
+    end_date: Optional[datetime] = Query(None, description="End date for analytics"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
+    print(f"Fetching analytics for restaurant: {restaurant_id}")
+    
+    # Check if restaurant belongs to current user
     restaurant = db.query(Restaurant).filter(
-        Restaurant.id == request.restaurant_id,
+        Restaurant.id == restaurant_id,
         Restaurant.owner_id == current_user.id
     ).first()
     
     if not restaurant:
+        print(f"Restaurant with ID {restaurant_id} not found for user {current_user.id}")
         raise HTTPException(status_code=404, detail="Restaurant not found")
     
-    analytics_data = get_sales_analytics(
-        db=db,
-        restaurant_id=request.restaurant_id,
-        start_date=request.start_date,
-        end_date=request.end_date
-    )
+    # Get sales analytics
+    analytics_data = get_sales_analytics(db, restaurant_id, start_date, end_date)
     
-    # Use OpenAI to detect anomalies
-    anomalies = detect_anomalies(analytics_data)
-    analytics_data["anomalies"] = anomalies
+    # If no sales data, return default values
+    if not analytics_data['summary']['total_transactions']:
+        analytics_data['anomalies'] = []
+        analytics_data['insights'] = ["Upload sales data to see insights and analytics"]
+        print("No sales data found, returning default values")
+    else:
+        try:
+            analytics_data['anomalies'] = detect_anomalies(analytics_data)
+            analytics_data['insights'] = generate_insights(analytics_data)
+            print("Generated AI insights and anomalies")
+        except Exception as e:
+            print(f"Error generating AI insights: {str(e)}")
+            analytics_data['anomalies'] = [{
+                "description": f"AI Analysis Error: {str(e)}",
+                "impact": "Unknown",
+                "explanation": "Failed to generate insights"
+            }]
+            analytics_data['insights'] = ["Unable to generate insights at this time"]
     
-    # Use OpenAI to generate insights
-    insights = generate_insights(analytics_data)
-    analytics_data["insights"] = insights
-    
+    print(f"Returning analytics data: {analytics_data}")
     return analytics_data

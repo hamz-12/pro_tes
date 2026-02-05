@@ -1,248 +1,480 @@
-// frontend/src/pages/DashboardPage/DashboardPage.jsx
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
+// pages/DashboardPage/DashboardPage.jsx
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   FiLogOut,
-  FiSettings,
   FiBell,
   FiUser,
   FiRefreshCw,
   FiDownload,
   FiUpload,
   FiPlus,
-  FiCalendar
+  FiCalendar,
+  FiCheck
 } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
-import dashboardService from '../../services/dashboardService';
+import { useTheme } from '../../context/ThemeContext';
+import { 
+  useRestaurants, 
+  useAnalytics, 
+  useCreateRestaurant,
+  useUploadCSV,
+  usePreviewCSV,
+  useRefreshDashboard 
+} from '../../hooks/useDashboardData';
 import { getDateRange } from '../../utils/dateUtils';
-import Dashboard from '../../components/dashboard/Dashboard/Dashboard';
-import AnomalyAlert from '../../components/dashboard/AnomalyAlert/AnomalyAlert';
 import MetricCard from '../../components/dashboard/MetricCard/MetricCard';
 import SalesChart from '../../components/dashboard/SalesChart/SalesChart';
 import TopItems from '../../components/dashboard/TopItems/TopItems';
-import SalesByCategory from '../../components/dashboard/SalesByCategory/SalesByCategory';
 import SalesByHour from '../../components/dashboard/SalesByHour/SalesByHour';
+import InsightsPanel from '../../components/dashboard/InsightsPanel/InsightsPanel';
+import SalesByPurchaseType from '../../components/dashboard/SalesByPurchaseType/SalesByPurchaseType';
+import SalesByPaymentMethod from '../../components/dashboard/SalesByPaymentMethod/SalesByPaymentMethod';
+import ManagerPerformance from '../../components/dashboard/ManagerPerformance/ManagerPerformance';
+import SalesByCity from '../../components/dashboard/SalesByCity/SalesByCity';
 import { toast } from 'react-hot-toast';
 import styles from './DashboardPage.module.css';
 
+// Helper to get acknowledged notifications from localStorage
+const getAcknowledgedNotifications = () => {
+  try {
+    const stored = localStorage.getItem('acknowledged_notifications');
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+// Helper to save acknowledged notifications to localStorage
+const saveAcknowledgedNotifications = (ids) => {
+  try {
+    localStorage.setItem('acknowledged_notifications', JSON.stringify(ids));
+  } catch (e) {
+    console.warn('Failed to save acknowledged notifications:', e);
+  }
+};
+
 const DashboardPage = () => {
   const { user, logout } = useAuth();
+  const { isDarkMode } = useTheme();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
-  
-  // State management
-  const [restaurants, setRestaurants] = useState([]);
+
+  // Local state
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
-  const [dashboardData, setDashboardData] = useState({});
-  const [anomalies, setAnomalies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [dateRange, setDateRange] = useState('30d');
+  const [dateRange, setDateRange] = useState('all');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [csvFile, setCsvFile] = useState(null);
   const [csvColumns, setCsvColumns] = useState([]);
   const [columnMapping, setColumnMapping] = useState({});
-  const [uploading, setUploading] = useState(false);
+  
+  // Acknowledged notifications state - persisted in localStorage
+  const [acknowledgedIds, setAcknowledgedIds] = useState(() => getAcknowledgedNotifications());
 
-  // Fetch restaurants on component mount
+  // Calculate date range
+  const { startDate, endDate } = useMemo(() => getDateRange(dateRange), [dateRange]);
+
+  // React Query hooks - CACHED DATA FETCHING
+  const { 
+    data: restaurants = [], 
+    isLoading: restaurantsLoading,
+    error: restaurantsError 
+  } = useRestaurants();
+
+  const { 
+    data: analyticsData, 
+    isLoading: analyticsLoading,
+    isFetching: analyticsRefreshing,
+    error: analyticsError,
+    refetch: refetchAnalytics
+  } = useAnalytics(selectedRestaurant, startDate, endDate, {
+    enabled: !!selectedRestaurant,
+  });
+
+  // Mutations
+  const createRestaurantMutation = useCreateRestaurant();
+  const uploadCSVMutation = useUploadCSV();
+  const previewCSVMutation = usePreviewCSV();
+  const { refreshAnalytics } = useRefreshDashboard();
+
+  // Set first restaurant as selected when restaurants load
   useEffect(() => {
-    fetchRestaurants();
+    if (restaurants.length > 0 && !selectedRestaurant) {
+      setSelectedRestaurant(restaurants[0].id);
+    } else if (restaurants.length === 0 && !restaurantsLoading) {
+      handleCreateDefaultRestaurant();
+    }
+  }, [restaurants, restaurantsLoading, selectedRestaurant]);
+
+  // Memoized dashboard data with defaults
+  const dashboardData = useMemo(() => {
+    if (!analyticsData) {
+      return {
+        summary: { total_revenue: 0, total_transactions: 0, avg_transaction_value: 0 },
+        daily_sales: [],
+        top_items: [],
+        sales_by_hour: [],
+        sales_by_payment_method: {},
+        sales_by_day_of_week: {},
+        sales_by_purchase_type: {},
+        sales_by_manager: {},
+        sales_by_city: {},
+        anomalies: [],
+        insights: []
+      };
+    }
+    return analyticsData;
+  }, [analyticsData]);
+
+  // Process anomalies with unique IDs and acknowledged status
+  const notifications = useMemo(() => {
+    const rawAnomalies = dashboardData.anomalies || [];
+    
+    return rawAnomalies.map((anomaly, index) => {
+      // Generate a unique ID for each anomaly
+      const id = anomaly.id || `anomaly_${index}_${anomaly.description?.substring(0, 20) || index}`;
+      
+      return {
+        ...anomaly,
+        id,
+        acknowledged: acknowledgedIds.includes(id),
+        title: anomaly.title || anomaly.description?.substring(0, 50) || 'Anomaly Detected',
+        severity: anomaly.severity || 'info',
+        time: anomaly.date || anomaly.time || 'Recently'
+      };
+    });
+  }, [dashboardData.anomalies, acknowledgedIds]);
+
+  // Count unread notifications
+  const unreadCount = useMemo(() => {
+    return notifications.filter(n => !n.acknowledged).length;
+  }, [notifications]);
+
+  // Mark single notification as read
+  const handleMarkAsRead = useCallback((notificationId) => {
+    setAcknowledgedIds(prev => {
+      if (prev.includes(notificationId)) return prev;
+      const updated = [...prev, notificationId];
+      saveAcknowledgedNotifications(updated);
+      return updated;
+    });
   }, []);
 
-  // Fetch dashboard data when restaurant or date range changes
-  useEffect(() => {
-    if (selectedRestaurant) {
-      fetchDashboardData();
-    }
-  }, [selectedRestaurant, dateRange]);
+  // Mark all notifications as read
+  const handleMarkAllAsRead = useCallback(() => {
+    const allIds = notifications.map(n => n.id);
+    setAcknowledgedIds(allIds);
+    saveAcknowledgedNotifications(allIds);
+    toast.success('All notifications marked as read');
+  }, [notifications]);
 
-  const fetchRestaurants = async () => {
+  // Clear all acknowledged (reset)
+  const handleClearAcknowledged = useCallback(() => {
+    setAcknowledgedIds([]);
+    saveAcknowledgedNotifications([]);
+  }, []);
+
+  // Handlers
+  const handleCreateDefaultRestaurant = useCallback(async () => {
     try {
-      setLoading(true);
-      const restaurantsData = await dashboardService.getRestaurants();
-      setRestaurants(restaurantsData);
-      
-      // Select first restaurant by default
-      if (restaurantsData.length > 0) {
-        setSelectedRestaurant(restaurantsData[0].id);
+      const result = await createRestaurantMutation.mutateAsync({
+        name: 'Default Restaurant',
+        address: '123 Main St',
+        phone: '555-1234',
+        email: 'default@restaurant.com',
+        description: 'Default restaurant for analytics'
+      });
+      if (result?.id) {
+        setSelectedRestaurant(result.id);
       }
     } catch (error) {
-      console.error('Error fetching restaurants:', error);
-      toast.error('Failed to fetch restaurants');
-    } finally {
-      setLoading(false);
+      console.error('Error creating default restaurant:', error);
     }
-  };
+  }, [createRestaurantMutation]);
 
-  const fetchDashboardData = async () => {
-    if (!selectedRestaurant) return;
-    
-    try {
-      setRefreshing(true);
-      const { startDate, endDate } = getDateRange(dateRange);
-      
-      const analyticsData = await dashboardService.getAnalytics(
-        selectedRestaurant,
-        startDate,
-        endDate
-      );
-      
-      setDashboardData(analyticsData);
-      setAnomalies(analyticsData.anomalies || []);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      toast.error('Failed to fetch dashboard data');
-    } finally {
-      setRefreshing(false);
+  const handleRefresh = useCallback(() => {
+    if (selectedRestaurant) {
+      refetchAnalytics();
+      toast.success('Refreshing data...');
     }
-  };
+  }, [selectedRestaurant, refetchAnalytics]);
 
-  const handleRefresh = () => {
-    fetchDashboardData();
-  };
-
-  const handleDateRangeChange = (range) => {
+  const handleDateRangeChange = useCallback((range) => {
     setDateRange(range);
-  };
+  }, []);
 
-  const handleExport = () => {
-    // In a real implementation, this would call an export API
-    toast.success('Exporting dashboard data...');
-  };
+  const handleExport = useCallback(() => {
+    const dataStr = JSON.stringify(dashboardData, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dashboard-export-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Dashboard data exported');
+  }, [dashboardData]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await logout();
     navigate('/login');
-  };
+  }, [logout, navigate]);
 
   // CSV Upload handlers
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
+  const handleFileSelect = useCallback(async (event) => {
+    const file = event.target.files?.[0];
     if (file && file.type === 'text/csv') {
       setCsvFile(file);
-      previewCSVColumns(file);
+      setUploadModalOpen(true);
+      
+      try {
+        const response = await previewCSVMutation.mutateAsync(file);
+        if (response?.columns) {
+          setCsvColumns(response.columns);
+          setColumnMapping(response.suggested_mapping || {});
+        }
+      } catch (error) {
+        console.error('Error previewing CSV:', error);
+      }
     } else {
       toast.error('Please select a valid CSV file');
     }
-  };
+  }, [previewCSVMutation]);
 
-  const previewCSVColumns = async (file) => {
-    try {
-      const response = await dashboardService.previewCSVColumns(file);
-      setCsvColumns(response.columns);
+  const handleDrop = useCallback(async (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (file && file.type === 'text/csv') {
+      setCsvFile(file);
+      setUploadModalOpen(true);
       
-      // Initialize default mapping (first column to date, second to revenue, etc.)
-      const defaultMapping = {};
-      if (response.columns.length >= 2) {
-        defaultMapping[response.columns[0]] = 'date';
-        defaultMapping[response.columns[1]] = 'total_sales';
-        if (response.columns.length >= 3) {
-          defaultMapping[response.columns[2]] = 'total_quantity';
+      try {
+        const response = await previewCSVMutation.mutateAsync(file);
+        if (response?.columns) {
+          setCsvColumns(response.columns);
+          setColumnMapping(response.suggested_mapping || {});
         }
+      } catch (error) {
+        console.error('Error previewing CSV:', error);
       }
-      setColumnMapping(defaultMapping);
-    } catch (error) {
-      console.error('Error previewing CSV columns:', error);
-      toast.error('Failed to preview CSV columns');
+    } else {
+      toast.error('Please select a valid CSV file');
     }
-  };
+  }, [previewCSVMutation]);
 
-  const handleColumnMappingChange = (column, field) => {
-    setColumnMapping(prev => ({
+  const handleDragOver = useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
+  const handleColumnMappingChange = useCallback((column, field) => {
+    setColumnMapping((prev) => ({
       ...prev,
-      [column]: field
+      [column]: field,
     }));
-  };
+  }, []);
 
-  const handleUploadCSV = async () => {
+  const validateRequiredFields = useCallback(() => {
+    if (!csvColumns.length) return false;
+    return Object.values(columnMapping).includes('date');
+  }, [csvColumns, columnMapping]);
+
+  const handleUploadCSV = useCallback(async () => {
     if (!csvFile || !selectedRestaurant) return;
-    
+
+    if (!validateRequiredFields()) {
+      toast.error('Please map the Date field (required)');
+      return;
+    }
+
+    const filteredMapping = {};
+    Object.entries(columnMapping).forEach(([column, field]) => {
+      if (field) {
+        filteredMapping[column] = field;
+      }
+    });
+
     try {
-      setUploading(true);
-      await dashboardService.uploadCSV(csvFile, selectedRestaurant, columnMapping);
-      toast.success('CSV uploaded successfully');
+      await uploadCSVMutation.mutateAsync({
+        file: csvFile,
+        restaurantId: selectedRestaurant,
+        columnsMapping: filteredMapping
+      });
+      
       setUploadModalOpen(false);
       setCsvFile(null);
       setCsvColumns([]);
       setColumnMapping({});
-      
-      // Refresh dashboard data after upload
-      fetchDashboardData();
+      setDateRange('all');
     } catch (error) {
       console.error('Error uploading CSV:', error);
-      toast.error('Failed to upload CSV');
-    } finally {
-      setUploading(false);
     }
-  };
+  }, [csvFile, selectedRestaurant, columnMapping, validateRequiredFields, uploadCSVMutation]);
 
-  const metricCards = [
+  const closeUploadModal = useCallback(() => {
+    setUploadModalOpen(false);
+    setCsvFile(null);
+    setCsvColumns([]);
+    setColumnMapping({});
+  }, []);
+
+  // Memoized calculations
+  const calculateRevenueChange = useMemo(() => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 14) return 0;
+    
+    const currentPeriod = dailySales.slice(-7);
+    const previousPeriod = dailySales.slice(-14, -7);
+    
+    const currentRevenue = currentPeriod.reduce((sum, day) => sum + (day.total_amount || 0), 0);
+    const previousRevenue = previousPeriod.reduce((sum, day) => sum + (day.total_amount || 0), 0);
+    
+    return previousRevenue > 0 ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+  }, [dashboardData.daily_sales]);
+
+  const calculateTransactionsChange = useMemo(() => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 14) return 0;
+    
+    const currentPeriod = dailySales.slice(-7);
+    const previousPeriod = dailySales.slice(-14, -7);
+    
+    const currentTransactions = currentPeriod.reduce((sum, day) => sum + (day.transactions || 0), 0);
+    const previousTransactions = previousPeriod.reduce((sum, day) => sum + (day.transactions || 0), 0);
+    
+    return previousTransactions > 0 ? ((currentTransactions - previousTransactions) / previousTransactions) * 100 : 0;
+  }, [dashboardData.daily_sales]);
+
+  const calculateAvgOrderChange = useMemo(() => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 14) return 0;
+    
+    const currentPeriod = dailySales.slice(-7);
+    const previousPeriod = dailySales.slice(-14, -7);
+    
+    const calcAvg = (period) => {
+      const total = period.reduce((sum, day) => {
+        return sum + (day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0);
+      }, 0);
+      return period.length > 0 ? total / period.length : 0;
+    };
+    
+    const currentAvg = calcAvg(currentPeriod);
+    const previousAvg = calcAvg(previousPeriod);
+    
+    return previousAvg > 0 ? ((currentAvg - previousAvg) / previousAvg) * 100 : 0;
+  }, [dashboardData.daily_sales]);
+
+  const getChangeType = useCallback((change) => {
+    return change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral';
+  }, []);
+
+  const generateSparklineData = useCallback((type) => {
+    const dailySales = dashboardData.daily_sales || [];
+    if (dailySales.length < 10) return [];
+    
+    return dailySales.slice(-10).map(day => {
+      switch (type) {
+        case 'revenue':
+          return day.total_amount || 0;
+        case 'transactions':
+          return day.transactions || 0;
+        case 'avg_order':
+          return day.total_amount && day.transactions > 0 ? day.total_amount / day.transactions : 0;
+        default:
+          return 0;
+      }
+    });
+  }, [dashboardData.daily_sales]);
+
+  // Memoized metric cards
+  const metricCards = useMemo(() => [
     {
       title: 'Total Revenue',
       value: dashboardData.summary?.total_revenue || 0,
-      change: 12.5,
-      changeType: 'positive',
+      change: calculateRevenueChange,
+      changeType: getChangeType(calculateRevenueChange),
       icon: FiPlus,
       color: 'primary',
-      sparklineData: [45, 52, 38, 60, 55, 48, 62, 58, 55, 60],
+      sparklineData: generateSparklineData('revenue'),
       comparisonText: 'vs last period',
     },
     {
       title: 'Transactions',
       value: dashboardData.summary?.total_transactions || 0,
-      change: 8.2,
-      changeType: 'positive',
+      change: calculateTransactionsChange,
+      changeType: getChangeType(calculateTransactionsChange),
       icon: FiDownload,
       color: 'secondary',
-      sparklineData: [120, 135, 128, 140, 142, 138, 145, 148, 150, 155],
+      sparklineData: generateSparklineData('transactions'),
       comparisonText: 'vs last period',
     },
     {
       title: 'Avg. Order Value',
       value: dashboardData.summary?.avg_transaction_value || 0,
-      change: -2.3,
-      changeType: 'negative',
+      change: calculateAvgOrderChange,
+      changeType: getChangeType(calculateAvgOrderChange),
       icon: FiCalendar,
       color: 'tertiary',
-      sparklineData: [45.5, 46.2, 45.8, 44.9, 44.5, 43.8, 44.2, 43.5, 44.0, 43.8],
+      sparklineData: generateSparklineData('avg_order'),
       comparisonText: 'vs last period',
     },
     {
       title: 'Top Item Sales',
       value: dashboardData.top_items?.[0]?.total_quantity || 0,
-      change: 15.8,
-      changeType: 'positive',
+      change: 0,
+      changeType: 'neutral',
       icon: FiRefreshCw,
       color: 'success',
-      sparklineData: [38, 42, 45, 48, 50, 52, 55, 58, 60, 62],
+      sparklineData: [],
       comparisonText: 'vs last period',
     },
-  ];
+  ], [dashboardData, calculateRevenueChange, calculateTransactionsChange, calculateAvgOrderChange, getChangeType, generateSparklineData]);
 
+  // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: {
-        duration: 0.5,
-      },
+      transition: { duration: 0.5 },
     },
   };
 
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.5 },
+    },
+  };
+
+  // Loading state
+  const isLoading = restaurantsLoading || (analyticsLoading && !analyticsData);
+  const isRefreshing = analyticsRefreshing;
+
+  if (isLoading && restaurants.length === 0) {
+    return (
+      <div className={styles.dashboardPage}>
+        <div className={styles.loadingContainer}>
+          <div className={styles.spinner}></div>
+          <p>Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.dashboardPage}>
-      {/* Header */}
       <header className={styles.header}>
         <div className={styles.headerLeft}>
           <h1 className={styles.pageTitle}>Restaurant Analytics</h1>
           <p className={styles.pageSubtitle}>
-            Welcome back, {user?.username || 'User'}! Here's what's happening with your restaurant today.
+            Welcome back, {user?.data?.username || user?.username || 'User'}! Here's what's happening with your restaurant today.
           </p>
-          
-          {/* Restaurant Selector */}
+
           <div className={styles.restaurantSelector}>
             <label htmlFor="restaurant-select" className={styles.selectorLabel}>
               Restaurant:
@@ -252,9 +484,9 @@ const DashboardPage = () => {
               className={styles.restaurantSelect}
               value={selectedRestaurant || ''}
               onChange={(e) => setSelectedRestaurant(Number(e.target.value))}
-              disabled={loading}
+              disabled={restaurantsLoading}
             >
-              {restaurants.map(restaurant => (
+              {restaurants.map((restaurant) => (
                 <option key={restaurant.id} value={restaurant.id}>
                   {restaurant.name}
                 </option>
@@ -262,9 +494,8 @@ const DashboardPage = () => {
             </select>
           </div>
         </div>
-        
+
         <div className={styles.headerRight}>
-          {/* Date Range Selector */}
           <div className={styles.dateRangeSelector}>
             <select
               value={dateRange}
@@ -275,141 +506,197 @@ const DashboardPage = () => {
               <option value="30d">Last 30 Days</option>
               <option value="90d">Last 90 Days</option>
               <option value="1y">Last Year</option>
+              <option value="all">All Time</option>
             </select>
           </div>
-          
-          {/* Action Buttons */}
+
           <div className={styles.headerActions}>
             <button
               className={styles.uploadButton}
-              onClick={() => fileInputRef.current.click()}
+              onClick={() => setUploadModalOpen(true)}
               title="Upload CSV"
+              type="button"
             >
               <FiUpload size={18} />
-              Upload
+              <span>Upload</span>
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleFileSelect}
-              style={{ display: 'none' }}
-            />
-            
+
             <button
               className={styles.refreshButton}
               onClick={handleRefresh}
-              disabled={refreshing}
+              disabled={isRefreshing}
               title="Refresh data"
+              type="button"
             >
-              <FiRefreshCw size={18} className={refreshing ? styles.spinning : ''} />
-              Refresh
+              <FiRefreshCw size={18} className={isRefreshing ? styles.spinning : ''} />
+              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
             </button>
-            
+
             <button
               className={styles.exportButton}
               onClick={handleExport}
               title="Export data"
+              type="button"
             >
               <FiDownload size={18} />
-              Export
-            </button>
-            
-            <button
-              className={styles.addRestaurantButton}
-              onClick={() => navigate('/restaurants/new')}
-              title="Add restaurant"
-            >
-              <FiPlus size={18} />
-              Add
+              <span>Export</span>
             </button>
           </div>
-          
+
           {/* Notifications */}
           <div className={styles.notificationContainer}>
             <button
               className={styles.notificationButton}
               onClick={() => setNotificationMenuOpen(!notificationMenuOpen)}
+              type="button"
             >
               <FiBell size={20} />
-              {anomalies.filter(a => !a.acknowledged).length > 0 && (
+              {unreadCount > 0 && (
                 <span className={styles.notificationBadge}>
-                  {anomalies.filter(a => !a.acknowledged).length}
+                  {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
             </button>
-            
-            {notificationMenuOpen && (
-              <div className={styles.notificationMenu}>
-                <div className={styles.notificationHeader}>
-                  <h3>Notifications</h3>
-                  <button className={styles.markAllRead}>Mark all as read</button>
-                </div>
-                <div className={styles.notificationList}>
-                  {anomalies.length > 0 ? (
-                    anomalies.map(anomaly => (
-                      <div key={anomaly.id || anomaly.date} className={styles.notificationItem}>
-                        <div className={`${styles.notificationDot} ${styles[anomaly.severity]}`} />
-                        <div className={styles.notificationContent}>
-                          <h4>{anomaly.title}</h4>
-                          <p>{anomaly.description}</p>
-                          <span className={styles.notificationTime}>{anomaly.time}</span>
+
+            <AnimatePresence>
+              {notificationMenuOpen && (
+                <motion.div
+                  className={styles.notificationMenu}
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className={styles.notificationHeader}>
+                    <h3>
+                      Notifications
+                      {unreadCount > 0 && (
+                        <span className={styles.unreadBadge}>{unreadCount} new</span>
+                      )}
+                    </h3>
+                    {notifications.length > 0 && unreadCount > 0 && (
+                      <button 
+                        className={styles.markAllRead}
+                        onClick={handleMarkAllAsRead}
+                        type="button"
+                      >
+                        <FiCheck size={14} />
+                        Mark all as read
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className={styles.notificationList}>
+                    {notifications.length > 0 ? (
+                      notifications.slice(0, 10).map((notification) => (
+                        <div 
+                          key={notification.id} 
+                          className={`${styles.notificationItem} ${notification.acknowledged ? styles.read : styles.unread}`}
+                          onClick={() => handleMarkAsRead(notification.id)}
+                        >
+                          <div className={`${styles.notificationDot} ${styles[notification.severity || 'info']}`} />
+                          <div className={styles.notificationContent}>
+                            <h4>{notification.title}</h4>
+                            <p>{notification.description}</p>
+                            <span className={styles.notificationTime}>
+                              {notification.time}
+                            </span>
+                          </div>
+                          {notification.acknowledged && (
+                            <div className={styles.readIndicator}>
+                              <FiCheck size={14} />
+                            </div>
+                          )}
                         </div>
+                      ))
+                    ) : (
+                      <div className={styles.noNotifications}>
+                        <FiBell size={32} />
+                        <p>No notifications</p>
+                        <span>You're all caught up!</span>
                       </div>
-                    ))
-                  ) : (
-                    <div className={styles.noNotifications}>
-                      No new notifications
+                    )}
+                  </div>
+                  
+                  {notifications.length > 0 && (
+                    <div className={styles.notificationFooter}>
+                      <span className={styles.notificationCount}>
+                        {notifications.length} total notification{notifications.length !== 1 ? 's' : ''}
+                      </span>
                     </div>
                   )}
-                </div>
-              </div>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-          
+
           {/* User Menu */}
           <div className={styles.userContainer}>
             <button
               className={styles.userButton}
               onClick={() => setUserMenuOpen(!userMenuOpen)}
+              type="button"
             >
               <div className={styles.userAvatar}>
                 <FiUser size={18} />
               </div>
-              <span className={styles.userName}>{user?.username || 'User'}</span>
+              <span className={styles.userName}>
+                {user?.data?.username || user?.username || 'User'}
+              </span>
             </button>
             
-            {userMenuOpen && (
-              <div className={styles.userMenu}>
-                <button className={styles.menuItem}>
-                  <FiUser size={16} />
-                  Profile
-                </button>
-                <button className={styles.menuItem}>
-                  <FiSettings size={16} />
-                  Settings
-                </button>
-                <div className={styles.menuDivider} />
-                <button className={styles.menuItem} onClick={handleLogout}>
-                  <FiLogOut size={16} />
-                  Logout
-                </button>
-              </div>
-            )}
+            <AnimatePresence>
+              {userMenuOpen && (
+                <motion.div
+                  className={styles.userMenu}
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <button 
+                    className={styles.menuItem}
+                    onClick={() => {
+                      navigate('/profile');
+                      setUserMenuOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <FiUser size={16} />
+                    Profile
+                  </button>
+                  <div className={styles.menuDivider} />
+                  <button 
+                    className={styles.menuItem} 
+                    onClick={handleLogout}
+                    type="button"
+                  >
+                    <FiLogOut size={16} />
+                    Logout
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </header>
-
-      {/* Main Content */}
+      
       <main className={styles.mainContent}>
         <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
         >
-          {/* Anomaly Alerts */}
-          {anomalies.length > 0 && (
-            <AnomalyAlert anomalies={anomalies} maxVisible={3} autoExpand={false} />
+          {/* Insights Panel */}
+          {(dashboardData.insights?.length > 0 || dashboardData.anomalies?.length > 0) && (
+            <motion.div variants={itemVariants}>
+              <InsightsPanel
+                insights={dashboardData.insights || []}
+                anomalies={dashboardData.anomalies || []}
+                loading={isLoading}
+                onRefresh={handleRefresh}
+              />
+            </motion.div>
           )}
 
           {/* Metrics Grid */}
@@ -418,7 +705,7 @@ const DashboardPage = () => {
               <MetricCard
                 key={index}
                 {...metric}
-                loading={loading}
+                loading={isLoading}
                 onClick={() => console.log(`View ${metric.title} details`)}
               />
             ))}
@@ -431,112 +718,191 @@ const DashboardPage = () => {
                 data={dashboardData.daily_sales || []}
                 title="Revenue Trends"
                 height={350}
-                loading={loading}
-                compareData={dateRange === '30d' ? dashboardData.previous_period_sales : null}
+                loading={isLoading}
+                onDateRangeChange={handleDateRangeChange}
               />
             </div>
-            
+
             <div className={styles.sideChart}>
               <TopItems
                 items={dashboardData.top_items || []}
-                loading={loading}
+                loading={isLoading}
               />
             </div>
           </div>
 
-          {/* Bottom Charts Grid */}
-          <div className={styles.bottomCharts}>
-            <div className={styles.bottomChart}>
-              <SalesByCategory
-                data={dashboardData.sales_by_category || []}
-                loading={loading}
-                chartType="doughnut"
+          {/* Analytics Row 1 */}
+          <div className={styles.analyticsRow}>
+            <div className={styles.analyticsChart}>
+              <SalesByPurchaseType
+                data={dashboardData.sales_by_purchase_type || {}}
+                loading={isLoading}
+                title="Sales by Channel"
               />
             </div>
-            
-            <div className={styles.bottomChart}>
-              <SalesByHour
-                data={dashboardData.sales_by_hour || []}
-                loading={loading}
+
+            <div className={styles.analyticsChart}>
+              <SalesByPaymentMethod
+                data={dashboardData.sales_by_payment_method || {}}
+                loading={isLoading}
+                title="Payment Methods"
               />
             </div>
+          </div>
+
+          {/* Analytics Row 2 */}
+          <div className={styles.analyticsRow}>
+            <div className={styles.analyticsChart}>
+              <ManagerPerformance
+                data={dashboardData.sales_by_manager || {}}
+                loading={isLoading}
+                title="Manager Performance"
+              />
+            </div>
+
+            <div className={styles.analyticsChart}>
+              <SalesByCity
+                data={dashboardData.sales_by_city || {}}
+                loading={isLoading}
+                title="Sales by Location"
+              />
+            </div>
+          </div>
+
+          {/* Sales by Hour */}
+          <div className={styles.fullWidthChart}>
+            <SalesByHour
+              data={dashboardData.sales_by_hour || []}
+              loading={isLoading}
+            />
           </div>
         </motion.div>
       </main>
 
       {/* CSV Upload Modal */}
-      {uploadModalOpen && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h2>Upload Sales Data</h2>
-              <button
-                className={styles.closeButton}
-                onClick={() => setUploadModalOpen(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            {csvColumns.length > 0 ? (
-              <div className={styles.modalBody}>
-                <h3>Map Your Columns</h3>
-                <p>Match your CSV columns to our data fields:</p>
-                
-                <div className={styles.columnMapping}>
-                  {csvColumns.map(column => (
-                    <div key={column} className={styles.mappingRow}>
-                      <span className={styles.columnName}>{column}</span>
-                      <select
-                        value={columnMapping[column] || ''}
-                        onChange={(e) => handleColumnMappingChange(column, e.target.value)}
-                        className={styles.fieldSelect}
-                      >
-                        <option value="">-- Select Field --</option>
-                        <option value="date">Date</option>
-                        <option value="total_sales">Total Sales</option>
-                        <option value="total_quantity">Total Quantity</option>
-                        <option value="item_name">Item Name</option>
-                        <option value="category">Category</option>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-                
-                <div className={styles.modalActions}>
-                  <button
-                    className={styles.cancelButton}
-                    onClick={() => setUploadModalOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className={styles.uploadButton}
-                    onClick={handleUploadCSV}
-                    disabled={uploading}
-                  >
-                    {uploading ? 'Uploading...' : 'Upload'}
-                  </button>
-                </div>
+      <AnimatePresence>
+        {uploadModalOpen && (
+          <motion.div
+            className={styles.modalOverlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeUploadModal}
+          >
+            <motion.div
+              className={styles.modalContent}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.3 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <h2>Upload Sales Data</h2>
+                <button
+                  className={styles.closeButton}
+                  onClick={closeUploadModal}
+                  type="button"
+                >
+                  ×
+                </button>
               </div>
-            ) : (
-              <div className={styles.modalBody}>
-                <div className={styles.fileDropArea}>
-                  <FiUpload size={48} />
-                  <h3>Drop your CSV file here or click to browse</h3>
-                  <p>Supported format: CSV</p>
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileSelect}
-                    className={styles.fileInput}
-                  />
+
+              {csvColumns.length > 0 ? (
+                <div className={styles.modalBody}>
+                  <h3>Map Your Columns</h3>
+                  <p>Match your CSV columns to our data fields. Unmapped columns will be ignored.</p>
+
+                  <div className={styles.columnMapping}>
+                    {csvColumns.map((column) => (
+                      <div key={column} className={styles.mappingRow}>
+                        <span className={styles.columnName}>{column}</span>
+                        <select
+                          value={columnMapping[column] || ''}
+                          onChange={(e) => handleColumnMappingChange(column, e.target.value)}
+                          className={styles.fieldSelect}
+                        >
+                          <option value="">-- Ignore Column --</option>
+                          <optgroup label="Required Fields">
+                            <option value="date">Date *</option>
+                            <option value="time">Time</option>
+                          </optgroup>
+                          <optgroup label="Recommended Fields">
+                            <option value="price">Price</option>
+                            <option value="quantity">Quantity</option>
+                          </optgroup>
+                          <optgroup label="Transaction Details">
+                            <option value="total_amount">Total Amount</option>
+                            <option value="item_name">Item Name</option>
+                            <option value="category">Category</option>
+                            <option value="transaction_id">Transaction ID</option>
+                          </optgroup>
+                          <optgroup label="Sales Channels">
+                            <option value="purchase_type">Purchase Type</option>
+                            <option value="payment_method">Payment Method</option>
+                          </optgroup>
+                          <optgroup label="Location & Staff">
+                            <option value="manager">Manager</option>
+                            <option value="city">City/Location</option>
+                            <option value="staff_id">Staff ID</option>
+                          </optgroup>
+                          <optgroup label="Other">
+                            <option value="customer_id">Customer ID</option>
+                            <option value="notes">Notes</option>
+                          </optgroup>
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className={styles.mappingNote}>
+                    <p>* Only the Date field is required.</p>
+                    <p>💡 Map Purchase Type, Manager, and City for detailed analytics.</p>
+                  </div>
+
+                  <div className={styles.modalActions}>
+                    <button
+                      className={styles.cancelButton}
+                      onClick={closeUploadModal}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className={styles.uploadButton}
+                      onClick={handleUploadCSV}
+                      disabled={uploadCSVMutation.isLoading || !validateRequiredFields()}
+                      type="button"
+                    >
+                      {uploadCSVMutation.isLoading ? 'Uploading...' : 'Upload'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+              ) : (
+                <div className={styles.modalBody}>
+                  <div 
+                    className={styles.fileDropArea}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <FiUpload size={48} />
+                    <h3>Drop your CSV file here or click to browse</h3>
+                    <p>Supported format: CSV</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={handleFileSelect}
+                      className={styles.fileInput}
+                    />
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

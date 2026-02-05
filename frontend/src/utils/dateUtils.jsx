@@ -19,6 +19,9 @@ export const getDateRange = (range) => {
     case '1y':
       startDate.setFullYear(endDate.getFullYear() - 1);
       break;
+    case 'all':
+      startDate.setFullYear(2000);
+      break;
     default:
       startDate.setDate(endDate.getDate() - 30);
   }
